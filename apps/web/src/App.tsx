@@ -3,6 +3,7 @@ import { useAuth } from './auth/AuthContext';
 import { platformAuthPath } from './auth/redirects';
 import { AppShell } from './components/ui/AppShell';
 import { PhotoCard } from './components/ui/PhotoCard';
+import { useState } from 'react';
 
 const highlightedPlans = [
   {
@@ -35,7 +36,9 @@ const highlightedPlans = [
 ] as const;
 
 export function App() {
-  const { status, user, registration, error } = useAuth();
+  const { status, user, registration, error, requestVerificationEmail } = useAuth();
+  const [verificationStatus, setVerificationStatus] = useState<string | null>(null);
+  const [isRequestingVerification, setIsRequestingVerification] = useState(false);
   const loginPath =
     typeof window === 'undefined'
       ? '/api/auth/login'
@@ -56,6 +59,75 @@ export function App() {
   }
 
   if (status === 'authenticated' && user) {
+    if (!user.emailVerified) {
+      async function handleSendVerification() {
+        setIsRequestingVerification(true);
+        setVerificationStatus(null);
+
+        try {
+          const result = await requestVerificationEmail();
+          if (result.status === 'email_not_configured') {
+            setVerificationStatus('Email delivery is not configured yet.');
+            return;
+          }
+
+          if (result.status === 'already_verified') {
+            setVerificationStatus('This email is already verified.');
+            return;
+          }
+
+          setVerificationStatus('Verification email sent.');
+        } catch (err) {
+          const message = err instanceof Error ? err.message : 'Unable to send verification email.';
+          setVerificationStatus(message);
+        } finally {
+          setIsRequestingVerification(false);
+        }
+      }
+
+      return (
+        <AppShell
+          eyebrow="Email verification"
+          title="Confirm your email to unlock full access"
+          summary={`We need to verify ${user.email} before this workspace opens.`}
+          aside={
+            <div className="shell-aside">
+              <span className="aside-value">24h</span>
+              <span className="aside-label">link window</span>
+            </div>
+          }
+        >
+          <section className="verification-panel" aria-label="Email verification">
+            <div>
+              <h2>Check your inbox</h2>
+              <p>
+                Use the verification link sent to your email address. You can request a new link any
+                time.
+              </p>
+            </div>
+            <div className="workspace-actions">
+              <button
+                className="button button--primary"
+                type="button"
+                onClick={() => void handleSendVerification()}
+                disabled={isRequestingVerification}
+              >
+                {isRequestingVerification ? 'Sending' : 'Send verification email'}
+              </button>
+              <Link className="button button--secondary" to="/verify-email">
+                Enter verification link
+              </Link>
+            </div>
+            {verificationStatus ? (
+              <div className="inline-alert" role="status">
+                {verificationStatus}
+              </div>
+            ) : null}
+          </section>
+        </AppShell>
+      );
+    }
+
     return (
       <AppShell
         eyebrow={registration === 'created' ? 'Registration complete' : 'Welcome back'}

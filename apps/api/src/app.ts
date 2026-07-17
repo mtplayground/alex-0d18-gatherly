@@ -5,7 +5,7 @@ import helmet from 'helmet';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import type { Pool } from 'pg';
-import type { AuthConfig } from './config';
+import type { AuthConfig, EmailConfig } from './config';
 import { createAuthRouter } from './routes/auth';
 import { createHealthRouter } from './routes/health';
 import { errorHandler } from './middleware/errorHandler';
@@ -13,6 +13,7 @@ import { errorHandler } from './middleware/errorHandler';
 export interface CreateAppOptions {
   databasePool: Pool;
   auth?: AuthConfig;
+  email?: EmailConfig;
   selfUrl: string;
   clientDistDir?: string;
 }
@@ -39,6 +40,7 @@ export function createApp(options: CreateAppOptions) {
       databasePool: options.databasePool,
       selfUrl: options.selfUrl,
       ...(options.auth ? { auth: options.auth } : {}),
+      ...(options.email ? { email: options.email } : {}),
     }),
   );
   app.use('/api/health', createHealthRouter(options.databasePool));

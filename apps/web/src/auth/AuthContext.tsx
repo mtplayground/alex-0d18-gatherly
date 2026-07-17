@@ -3,6 +3,9 @@ import type {
   UpdateCurrentUserRequest,
   UserProfile,
   UserRole,
+  VerificationEmailResponse,
+  VerifyEmailRequest,
+  VerifyEmailResponse,
 } from '@app/shared';
 import {
   createContext,
@@ -23,7 +26,9 @@ export interface AuthContextValue {
   registration: AuthSessionResponse['registration'] | null;
   error: string | null;
   refreshSession: () => Promise<void>;
+  requestVerificationEmail: () => Promise<VerificationEmailResponse>;
   updateRole: (role: UserRole) => Promise<UserProfile>;
+  verifyEmail: (token: string) => Promise<UserProfile>;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -78,6 +83,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [applySession],
   );
 
+  const requestVerificationEmail = useCallback(async () => {
+    return apiRequest<VerificationEmailResponse>('/api/auth/verification-email', {
+      method: 'POST',
+    });
+  }, []);
+
+  const verifyEmail = useCallback(
+    async (token: string) => {
+      const payload: VerifyEmailRequest = { token };
+      const response = await apiRequest<VerifyEmailResponse>('/api/auth/verify-email', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+
+      await refreshSession();
+
+      return response.user;
+    },
+    [refreshSession],
+  );
+
   useEffect(() => {
     void refreshSession();
   }, [refreshSession]);
@@ -89,9 +115,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       registration,
       error,
       refreshSession,
+      requestVerificationEmail,
       updateRole,
+      verifyEmail,
     }),
-    [error, refreshSession, registration, status, updateRole, user],
+    [
+      error,
+      refreshSession,
+      registration,
+      requestVerificationEmail,
+      status,
+      updateRole,
+      user,
+      verifyEmail,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
