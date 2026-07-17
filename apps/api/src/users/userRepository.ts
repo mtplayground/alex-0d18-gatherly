@@ -1,4 +1,5 @@
 import type { Pool } from 'pg';
+import type { UserRole } from '@app/shared';
 import type { MctaiSessionClaims } from '../auth/session';
 import { mapUserRow, type UserRecord, type UserRow } from './userModel';
 
@@ -57,4 +58,30 @@ export async function upsertAuthenticatedUser(
     user: mapUserRow(row),
     registration: row.was_created ? 'created' : 'returning',
   };
+}
+
+export async function updateAuthenticatedUserRole(
+  pool: Pool,
+  sub: string,
+  role: UserRole,
+): Promise<UserRecord> {
+  const result = await pool.query<UserRow>(
+    `
+      UPDATE users
+      SET
+        role = $2,
+        updated_at = NOW()
+      WHERE sub = $1
+        AND disabled_at IS NULL
+      RETURNING *
+    `,
+    [sub, role],
+  );
+
+  const row = result.rows[0];
+  if (!row) {
+    throw new Error('Authenticated user was not found for role update');
+  }
+
+  return mapUserRow(row);
 }
