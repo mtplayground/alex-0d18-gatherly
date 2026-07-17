@@ -1,14 +1,19 @@
 import compression from 'compression';
+import cookieParser from 'cookie-parser';
 import express from 'express';
 import helmet from 'helmet';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import type { Pool } from 'pg';
+import type { AuthConfig } from './config';
+import { createAuthRouter } from './routes/auth';
 import { createHealthRouter } from './routes/health';
 import { errorHandler } from './middleware/errorHandler';
 
 export interface CreateAppOptions {
   databasePool: Pool;
+  auth?: AuthConfig;
+  selfUrl: string;
   clientDistDir?: string;
 }
 
@@ -25,8 +30,17 @@ export function createApp(options: CreateAppOptions) {
 
   app.use(helmet());
   app.use(compression());
+  app.use(cookieParser());
   app.use(express.json({ limit: '1mb' }));
 
+  app.use(
+    '/api/auth',
+    createAuthRouter({
+      databasePool: options.databasePool,
+      selfUrl: options.selfUrl,
+      ...(options.auth ? { auth: options.auth } : {}),
+    }),
+  );
   app.use('/api/health', createHealthRouter(options.databasePool));
 
   if (existsSync(clientDistDir)) {
