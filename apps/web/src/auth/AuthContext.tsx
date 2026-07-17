@@ -1,5 +1,9 @@
 import type {
   AuthSessionResponse,
+  PasswordResetConfirmRequest,
+  PasswordResetConfirmResponse,
+  PasswordResetRequest,
+  PasswordResetRequestResponse,
   UpdateCurrentUserRequest,
   UserProfile,
   UserRole,
@@ -25,7 +29,9 @@ export interface AuthContextValue {
   user: UserProfile | null;
   registration: AuthSessionResponse['registration'] | null;
   error: string | null;
+  confirmPasswordReset: (token: string) => Promise<PasswordResetConfirmResponse>;
   refreshSession: () => Promise<void>;
+  requestPasswordReset: (email: string) => Promise<PasswordResetRequestResponse>;
   requestVerificationEmail: () => Promise<VerificationEmailResponse>;
   updateRole: (role: UserRole) => Promise<UserProfile>;
   verifyEmail: (token: string) => Promise<UserProfile>;
@@ -89,6 +95,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const requestPasswordReset = useCallback(async (email: string) => {
+    const payload: PasswordResetRequest = { email };
+    return apiRequest<PasswordResetRequestResponse>('/api/auth/password-reset/request', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }, []);
+
+  const confirmPasswordReset = useCallback(async (token: string) => {
+    const payload: PasswordResetConfirmRequest = { token };
+    return apiRequest<PasswordResetConfirmResponse>('/api/auth/password-reset/confirm', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }, []);
+
   const verifyEmail = useCallback(
     async (token: string) => {
       const payload: VerifyEmailRequest = { token };
@@ -114,15 +136,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user,
       registration,
       error,
+      confirmPasswordReset,
       refreshSession,
+      requestPasswordReset,
       requestVerificationEmail,
       updateRole,
       verifyEmail,
     }),
     [
       error,
+      confirmPasswordReset,
       refreshSession,
       registration,
+      requestPasswordReset,
       requestVerificationEmail,
       status,
       updateRole,
