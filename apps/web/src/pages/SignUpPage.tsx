@@ -27,7 +27,7 @@ function readPendingRole(): UserRole {
 }
 
 export function SignUpPage() {
-  const { status, user, updateRole } = useAuth();
+  const { error, status, user, updateRole } = useAuth();
   const [searchParams] = useSearchParams();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -87,6 +87,17 @@ export function SignUpPage() {
     beginRegistration('register');
   }
 
+  async function retryRoleSave() {
+    setRoleSaveState('saving');
+    try {
+      await updateRole(selectedRole);
+      window.localStorage.removeItem(pendingRoleKey);
+      setRoleSaveState('saved');
+    } catch {
+      setRoleSaveState('error');
+    }
+  }
+
   return (
     <main className="auth-page auth-page--signup">
       <section className="auth-visual" aria-label="Outdoor gathering">
@@ -105,6 +116,12 @@ export function SignUpPage() {
           </p>
         </div>
 
+        {error ? (
+          <div className="inline-alert" role="status">
+            {error}
+          </div>
+        ) : null}
+
         {status === 'authenticated' && user ? (
           <div className="auth-status">
             <span className="auth-status__label">
@@ -113,13 +130,18 @@ export function SignUpPage() {
             <strong>{user.name ?? user.email}</strong>
             <span className="role-pill">{selectedRole}</span>
             {roleSaveState === 'error' ? (
-              <button
-                className="button button--secondary"
-                type="button"
-                onClick={() => void updateRole(selectedRole)}
-              >
-                Save role again
-              </button>
+              <>
+                <div className="inline-alert" role="status">
+                  We could not save that role. Try again before opening the workspace.
+                </div>
+                <button
+                  className="button button--secondary"
+                  type="button"
+                  onClick={() => void retryRoleSave()}
+                >
+                  Save role again
+                </button>
+              </>
             ) : (
               <Link className="button button--primary" to="/">
                 Open workspace

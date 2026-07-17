@@ -19,8 +19,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { RsvpButtons } from '../components/RsvpButtons';
-import { ApiRequestError } from '../lib/api';
-import { apiRequest } from '../lib/api';
+import { ApiRequestError, apiRequest, friendlyApiErrorMessage } from '../lib/api';
+
+const maxAttachmentBytes = 12 * 1024 * 1024;
 
 function formatEventDate(value: string) {
   const date = new Date(value);
@@ -144,6 +145,7 @@ function EventHeroImage({ event }: { event: EventProfile }) {
         <img src={event.coverPhotoUrl} alt="" />
       ) : (
         <div className="event-detail-fallback">
+          <em>No cover photo</em>
           <span>{date.shortDay}</span>
           <strong>{event.title}</strong>
         </div>
@@ -206,7 +208,7 @@ export function EventDetailPage() {
         }
 
         setStatus('error');
-        setMessage(err instanceof Error ? err.message : 'Unable to load event.');
+        setMessage(friendlyApiErrorMessage(err, 'Unable to load event.'));
       });
 
     return () => {
@@ -241,7 +243,7 @@ export function EventDetailPage() {
           return;
         }
 
-        setRsvpMessage(err instanceof Error ? err.message : 'Unable to load your RSVP.');
+        setRsvpMessage(friendlyApiErrorMessage(err, 'Unable to load your RSVP.'));
       });
 
     return () => {
@@ -275,7 +277,7 @@ export function EventDetailPage() {
         }
 
         setCommentsStatus('error');
-        setCommentMessage(err instanceof Error ? err.message : 'Unable to load comments.');
+        setCommentMessage(friendlyApiErrorMessage(err, 'Unable to load comments.'));
       });
 
     return () => {
@@ -309,7 +311,7 @@ export function EventDetailPage() {
         }
 
         setActivityStatus('error');
-        setActivityMessage(err instanceof Error ? err.message : 'Unable to load activity.');
+        setActivityMessage(friendlyApiErrorMessage(err, 'Unable to load activity.'));
       });
 
     return () => {
@@ -343,7 +345,7 @@ export function EventDetailPage() {
         }
 
         setAttachmentStatus('error');
-        setAttachmentMessage(err instanceof Error ? err.message : 'Unable to load attachments.');
+        setAttachmentMessage(friendlyApiErrorMessage(err, 'Unable to load attachments.'));
       });
 
     return () => {
@@ -367,13 +369,26 @@ export function EventDetailPage() {
       setActivityMessage(null);
     } catch (err) {
       setActivityStatus('error');
-      setActivityMessage(err instanceof Error ? err.message : 'Unable to refresh activity.');
+      setActivityMessage(friendlyApiErrorMessage(err, 'Unable to refresh activity.'));
     }
   }
 
   async function handleAttachmentSubmit(submitEvent: FormEvent<HTMLFormElement>) {
     submitEvent.preventDefault();
     if (!event || !attachmentFile) {
+      return;
+    }
+
+    if (
+      attachmentFile.type !== 'application/pdf' ||
+      !attachmentFile.name.toLowerCase().endsWith('.pdf')
+    ) {
+      setAttachmentMessage('Upload a valid PDF file.');
+      return;
+    }
+
+    if (attachmentFile.size > maxAttachmentBytes) {
+      setAttachmentMessage('That PDF is too large. Upload a file that is 12 MB or smaller.');
       return;
     }
 
@@ -395,7 +410,7 @@ export function EventDetailPage() {
       setAttachmentStatus('ready');
       submitEvent.currentTarget.reset();
     } catch (err) {
-      setAttachmentMessage(err instanceof Error ? err.message : 'Unable to upload attachment.');
+      setAttachmentMessage(friendlyApiErrorMessage(err, 'Unable to upload attachment.'));
     } finally {
       setIsUploadingAttachment(false);
     }
@@ -423,7 +438,7 @@ export function EventDetailPage() {
       if (err instanceof ApiRequestError && err.status === 403) {
         setRsvpMessage('You need an invitation before you can RSVP.');
       } else {
-        setRsvpMessage(err instanceof Error ? err.message : 'Unable to save your RSVP.');
+        setRsvpMessage(friendlyApiErrorMessage(err, 'Unable to save your RSVP.'));
       }
     } finally {
       setIsSavingRsvp(false);
@@ -456,7 +471,7 @@ export function EventDetailPage() {
         setInviteMessage('Invitation saved, but email delivery failed.');
       }
     } catch (err) {
-      setInviteMessage(err instanceof Error ? err.message : 'Unable to invite that member.');
+      setInviteMessage(friendlyApiErrorMessage(err, 'Unable to invite that member.'));
     } finally {
       setInviteStatus('idle');
     }
@@ -481,7 +496,7 @@ export function EventDetailPage() {
       setCommentsStatus('ready');
       await refreshActivity(event.id);
     } catch (err) {
-      setCommentMessage(err instanceof Error ? err.message : 'Unable to post comment.');
+      setCommentMessage(friendlyApiErrorMessage(err, 'Unable to post comment.'));
     } finally {
       setIsPostingComment(false);
     }
@@ -650,7 +665,7 @@ export function EventDetailPage() {
           ) : null}
 
           {attachmentStatus === 'ready' && attachments.length === 0 ? (
-            <p className="comment-thread__empty">No PDF attachments yet.</p>
+            <p className="comment-thread__empty">No PDFs are attached to this event yet.</p>
           ) : null}
 
           <div className="attachment-list">
@@ -725,7 +740,9 @@ export function EventDetailPage() {
           ) : null}
 
           {commentsStatus === 'ready' && comments.length === 0 ? (
-            <p className="comment-thread__empty">No comments yet.</p>
+            <p className="comment-thread__empty">
+              No comments yet. The thread will fill in as guests coordinate.
+            </p>
           ) : null}
 
           <div className="comment-list">
@@ -769,7 +786,9 @@ export function EventDetailPage() {
           ) : null}
 
           {activityStatus === 'ready' && activities.length === 0 ? (
-            <p className="comment-thread__empty">No activity yet.</p>
+            <p className="comment-thread__empty">
+              No activity yet. RSVPs, comments, and event edits will appear here.
+            </p>
           ) : null}
 
           <div className="activity-list">
