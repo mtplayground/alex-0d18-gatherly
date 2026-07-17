@@ -30,7 +30,7 @@ export async function createEvent(pool: Pool, input: CreateEventInput): Promise<
         cover_photo_key
       )
       VALUES ($1, $2, $3, $4, $5, $6)
-      RETURNING *
+      RETURNING *, NULL::text AS organizer_name, NULL::text AS organizer_email, 0 AS rsvp_count
     `,
     [
       input.organizerSub,
@@ -53,10 +53,15 @@ export async function createEvent(pool: Pool, input: CreateEventInput): Promise<
 export async function listEvents(pool: Pool): Promise<EventRecord[]> {
   const result = await pool.query<EventRow>(
     `
-      SELECT *
+      SELECT
+        events.*,
+        users.name AS organizer_name,
+        users.email AS organizer_email,
+        0 AS rsvp_count
       FROM events
-      WHERE canceled_at IS NULL
-      ORDER BY starts_at ASC, created_at ASC
+      LEFT JOIN users ON users.sub = events.organizer_sub
+      WHERE events.canceled_at IS NULL
+      ORDER BY events.starts_at ASC, events.created_at ASC
     `,
   );
 
@@ -66,9 +71,14 @@ export async function listEvents(pool: Pool): Promise<EventRecord[]> {
 export async function findEventById(pool: Pool, eventId: string): Promise<EventRecord | null> {
   const result = await pool.query<EventRow>(
     `
-      SELECT *
+      SELECT
+        events.*,
+        users.name AS organizer_name,
+        users.email AS organizer_email,
+        0 AS rsvp_count
       FROM events
-      WHERE id = $1
+      LEFT JOIN users ON users.sub = events.organizer_sub
+      WHERE events.id = $1
     `,
     [eventId],
   );
@@ -92,7 +102,7 @@ export async function updateEvent(
         location = CASE WHEN $8::boolean THEN $9::text ELSE location END,
         cover_photo_key = CASE WHEN $10::boolean THEN $11::text ELSE cover_photo_key END
       WHERE id = $1
-      RETURNING *
+      RETURNING *, NULL::text AS organizer_name, NULL::text AS organizer_email, 0 AS rsvp_count
     `,
     [
       eventId,
@@ -131,10 +141,15 @@ export async function listEventsByOrganizer(
 ): Promise<EventRecord[]> {
   const result = await pool.query<EventRow>(
     `
-      SELECT *
+      SELECT
+        events.*,
+        users.name AS organizer_name,
+        users.email AS organizer_email,
+        0 AS rsvp_count
       FROM events
-      WHERE organizer_sub = $1
-      ORDER BY starts_at ASC, created_at ASC
+      LEFT JOIN users ON users.sub = events.organizer_sub
+      WHERE events.organizer_sub = $1
+      ORDER BY events.starts_at ASC, events.created_at ASC
     `,
     [organizerSub],
   );

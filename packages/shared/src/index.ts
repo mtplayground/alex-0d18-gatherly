@@ -53,10 +53,13 @@ export interface ProfilePhotoUploadResponse {
 export interface EventProfile {
   id: string;
   organizerSub: string;
+  organizerName: string | null;
+  organizerEmail: string | null;
   title: string;
   description: string | null;
   startsAt: string;
   location: string;
+  rsvpCount: number;
   coverPhotoKey: string | null;
   coverPhotoUrl: string | null;
   createdAt: string;
