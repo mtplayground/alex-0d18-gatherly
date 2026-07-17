@@ -1,0 +1,27 @@
+{
+  "name": "alex-0d18-gatherly",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspace @app/shared && npm run build --workspace @app/api && npm run build --workspace @app/web",
+    "dev": "npm run dev --workspace @app/api",
+    "dev:api": "npm run dev --workspace @app/api",
+    "dev:web": "npm run dev --workspace @app/web",
+    "format": "prettier --check .",
+    "format:write": "prettier --write .",
+    "lint": "eslint .",
+    "typecheck": "npm run typecheck --workspace @app/shared && npm run typecheck --workspace @app/api && npm run typecheck --workspace @app/web"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.18.0",
+    "@types/node": "^22.10.7",
+    "eslint": "^9.18.0",
+    "prettier": "^3.4.2",
+    "typescript": "^5.7.3",
+    "typescript-eslint": "^8.20.0"
+  }
+}

@@ -1,5 +1,9 @@
 target/
 node_modules/
+apps/*/dist/
+packages/*/dist/
+*.tsbuildinfo
+.env.production
 .gh_token
 .database_url
 .task_id
@@ -10,4 +14,3 @@ node_modules/
 .pipeline-state.json
 .gitkeep
 .progress
-
