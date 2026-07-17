@@ -26,6 +26,7 @@ export type RsvpStatus = (typeof RSVP_STATUSES)[number];
 
 export const EVENT_ACTIVITY_ACTIONS = [
   'event_created',
+  'event_updated',
   'rsvp_submitted',
   'comment_created',
 ] as const;
@@ -174,6 +175,10 @@ export interface CommentResponse {
 
 export interface CommentListResponse {
   comments: CommentProfile[];
+}
+
+export interface ActivityLogListResponse {
+  activities: ActivityLogProfile[];
 }
 
 export interface CreateEventRequest {

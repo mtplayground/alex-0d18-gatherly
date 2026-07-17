@@ -1,4 +1,5 @@
 import type { Pool } from 'pg';
+import { createActivityLog } from '../activity/activityLogRepository';
 import { mapEventRow, type EventRecord, type EventRow } from './eventModel';
 
 export interface CreateEventInput {
@@ -19,35 +20,52 @@ export interface UpdateEventInput {
 }
 
 export async function createEvent(pool: Pool, input: CreateEventInput): Promise<EventRecord> {
-  const result = await pool.query<EventRow>(
-    `
-      INSERT INTO events (
-        organizer_sub,
-        title,
-        description,
-        starts_at,
-        location,
-        cover_photo_key
-      )
-      VALUES ($1, $2, $3, $4, $5, $6)
-      RETURNING *, NULL::text AS organizer_name, NULL::text AS organizer_email, 0::int AS rsvp_count
-    `,
-    [
-      input.organizerSub,
-      input.title,
-      input.description,
-      input.startsAt,
-      input.location,
-      input.coverPhotoKey,
-    ],
-  );
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
 
-  const row = result.rows[0];
-  if (!row) {
-    throw new Error('Event insert did not return a row');
+    const result = await client.query<EventRow>(
+      `
+        INSERT INTO events (
+          organizer_sub,
+          title,
+          description,
+          starts_at,
+          location,
+          cover_photo_key
+        )
+        VALUES ($1, $2, $3, $4, $5, $6)
+        RETURNING *, NULL::text AS organizer_name, NULL::text AS organizer_email, 0::int AS rsvp_count
+      `,
+      [
+        input.organizerSub,
+        input.title,
+        input.description,
+        input.startsAt,
+        input.location,
+        input.coverPhotoKey,
+      ],
+    );
+
+    const row = result.rows[0];
+    if (!row) {
+      throw new Error('Event insert did not return a row');
+    }
+
+    await createActivityLog(client, {
+      eventId: row.id,
+      actorSub: input.organizerSub,
+      action: 'event_created',
+    });
+
+    await client.query('COMMIT');
+    return mapEventRow(row);
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
   }
-
-  return mapEventRow(row);
 }
 
 export async function listEvents(pool: Pool): Promise<EventRecord[]> {
@@ -95,36 +113,65 @@ export async function updateEvent(
   pool: Pool,
   eventId: string,
   input: UpdateEventInput,
+  actorSub?: string,
 ): Promise<EventRecord | null> {
-  const result = await pool.query<EventRow>(
-    `
-      UPDATE events
-      SET
-        title = CASE WHEN $2::boolean THEN $3::text ELSE title END,
-        description = CASE WHEN $4::boolean THEN $5::text ELSE description END,
-        starts_at = CASE WHEN $6::boolean THEN $7::timestamptz ELSE starts_at END,
-        location = CASE WHEN $8::boolean THEN $9::text ELSE location END,
-        cover_photo_key = CASE WHEN $10::boolean THEN $11::text ELSE cover_photo_key END
-      WHERE id = $1
-      RETURNING *, NULL::text AS organizer_name, NULL::text AS organizer_email, 0::int AS rsvp_count
-    `,
-    [
-      eventId,
-      input.title !== undefined,
-      input.title ?? null,
-      input.description !== undefined,
-      input.description ?? null,
-      input.startsAt !== undefined,
-      input.startsAt ?? null,
-      input.location !== undefined,
-      input.location ?? null,
-      input.coverPhotoKey !== undefined,
-      input.coverPhotoKey ?? null,
-    ],
-  );
+  const changedFields = Object.entries(input)
+    .filter(([, value]) => value !== undefined)
+    .map(([field]) => field);
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
 
-  const row = result.rows[0];
-  return row ? mapEventRow(row) : null;
+    const result = await client.query<EventRow>(
+      `
+        UPDATE events
+        SET
+          title = CASE WHEN $2::boolean THEN $3::text ELSE title END,
+          description = CASE WHEN $4::boolean THEN $5::text ELSE description END,
+          starts_at = CASE WHEN $6::boolean THEN $7::timestamptz ELSE starts_at END,
+          location = CASE WHEN $8::boolean THEN $9::text ELSE location END,
+          cover_photo_key = CASE WHEN $10::boolean THEN $11::text ELSE cover_photo_key END
+        WHERE id = $1
+        RETURNING *, NULL::text AS organizer_name, NULL::text AS organizer_email, 0::int AS rsvp_count
+      `,
+      [
+        eventId,
+        input.title !== undefined,
+        input.title ?? null,
+        input.description !== undefined,
+        input.description ?? null,
+        input.startsAt !== undefined,
+        input.startsAt ?? null,
+        input.location !== undefined,
+        input.location ?? null,
+        input.coverPhotoKey !== undefined,
+        input.coverPhotoKey ?? null,
+      ],
+    );
+
+    const row = result.rows[0];
+    if (!row) {
+      await client.query('COMMIT');
+      return null;
+    }
+
+    if (actorSub && changedFields.length > 0) {
+      await createActivityLog(client, {
+        eventId,
+        actorSub,
+        action: 'event_updated',
+        metadata: { changedFields },
+      });
+    }
+
+    await client.query('COMMIT');
+    return mapEventRow(row);
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 export async function deleteEvent(pool: Pool, eventId: string): Promise<boolean> {

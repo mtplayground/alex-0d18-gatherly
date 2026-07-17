@@ -1,5 +1,6 @@
 import type { Pool } from 'pg';
 import type { RsvpStatus } from '@app/shared';
+import { createActivityLog } from '../activity/activityLogRepository';
 import { mapRsvpRow, type RsvpRecord, type RsvpRow } from './rsvpModel';
 
 export interface UpsertRsvpInput {
@@ -39,39 +40,72 @@ export async function findRsvp(
 }
 
 export async function upsertRsvp(pool: Pool, input: UpsertRsvpInput): Promise<RsvpRecord> {
-  const result = await pool.query<RsvpRow>(
-    `
-      WITH saved_rsvp AS (
-        INSERT INTO event_rsvps (
-          event_id,
-          member_sub,
-          status
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const previousResult = await client.query<{ status: RsvpStatus }>(
+      `
+        SELECT status
+        FROM event_rsvps
+        WHERE event_id = $1
+          AND member_sub = $2
+        FOR UPDATE
+      `,
+      [input.eventId, input.memberSub],
+    );
+    const previousStatus = previousResult.rows[0]?.status ?? null;
+
+    const result = await client.query<RsvpRow>(
+      `
+        WITH saved_rsvp AS (
+          INSERT INTO event_rsvps (
+            event_id,
+            member_sub,
+            status
+          )
+          VALUES ($1, $2, $3)
+          ON CONFLICT (event_id, member_sub) DO UPDATE
+          SET
+            status = EXCLUDED.status,
+            responded_at = CASE
+              WHEN event_rsvps.status IS DISTINCT FROM EXCLUDED.status THEN NOW()
+              ELSE event_rsvps.responded_at
+            END,
+            updated_at = NOW()
+          RETURNING *
         )
-        VALUES ($1, $2, $3)
-        ON CONFLICT (event_id, member_sub) DO UPDATE
-        SET
-          status = EXCLUDED.status,
-          responded_at = CASE
-            WHEN event_rsvps.status IS DISTINCT FROM EXCLUDED.status THEN NOW()
-            ELSE event_rsvps.responded_at
-          END,
-          updated_at = NOW()
-        RETURNING *
-      )
-      SELECT
-        saved_rsvp.*,
-        users.name AS member_name,
-        users.email AS member_email
-      FROM saved_rsvp
-      JOIN users ON users.sub = saved_rsvp.member_sub
-    `,
-    [input.eventId, input.memberSub, input.status],
-  );
+        SELECT
+          saved_rsvp.*,
+          users.name AS member_name,
+          users.email AS member_email
+        FROM saved_rsvp
+        JOIN users ON users.sub = saved_rsvp.member_sub
+      `,
+      [input.eventId, input.memberSub, input.status],
+    );
 
-  const row = result.rows[0];
-  if (!row) {
-    throw new Error('RSVP upsert did not return a row');
+    const row = result.rows[0];
+    if (!row) {
+      throw new Error('RSVP upsert did not return a row');
+    }
+
+    if (previousStatus !== input.status) {
+      await createActivityLog(client, {
+        eventId: input.eventId,
+        actorSub: input.memberSub,
+        action: 'rsvp_submitted',
+        rsvpStatus: input.status,
+        metadata: { previousStatus },
+      });
+    }
+
+    await client.query('COMMIT');
+    return mapRsvpRow(row);
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
   }
-
-  return mapRsvpRow(row);
 }
