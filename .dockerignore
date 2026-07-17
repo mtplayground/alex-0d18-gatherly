@@ -1,0 +1,12 @@
+node_modules
+apps/*/dist
+packages/*/dist
+*.tsbuildinfo
+.git
+.gitignore
+.env.production
+.env.local
+.gh_token
+.database_url
+.progress
+npm-debug.log*

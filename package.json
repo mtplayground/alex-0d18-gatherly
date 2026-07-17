@@ -13,6 +13,8 @@
     "dev:web": "npm run dev --workspace @app/web",
     "db:migrate": "npm run db:migrate --workspace @app/api",
     "db:rollback": "npm run db:rollback --workspace @app/api",
+    "deploy:check": "npm run build && npm run lint && npm run test:e2e",
+    "env:check": "node scripts/check-env.mjs",
     "format": "prettier --check .",
     "format:write": "prettier --write .",
     "test:e2e": "tsx --test tests/e2e/*.test.ts",
