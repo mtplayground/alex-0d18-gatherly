@@ -1,4 +1,5 @@
 import type { Pool } from 'pg';
+import { createActivityLog } from '../activity/activityLogRepository';
 import { mapCommentRow, type CommentRecord, type CommentRow } from './commentModel';
 
 export interface CreateCommentInput {
@@ -66,18 +67,12 @@ export async function createComment(pool: Pool, input: CreateCommentInput): Prom
       throw new Error('Comment insert did not return a row');
     }
 
-    await client.query(
-      `
-        INSERT INTO event_activity_logs (
-          event_id,
-          actor_sub,
-          action,
-          comment_id
-        )
-        VALUES ($1, $2, 'comment_created', $3)
-      `,
-      [input.eventId, input.authorSub, row.id],
-    );
+    await createActivityLog(client, {
+      eventId: input.eventId,
+      actorSub: input.authorSub,
+      action: 'comment_created',
+      commentId: row.id,
+    });
 
     await client.query('COMMIT');
     return mapCommentRow(row);

@@ -1,4 +1,6 @@
 import type {
+  ActivityLogListResponse,
+  ActivityLogProfile,
   CommentListResponse,
   CommentProfile,
   CommentResponse,
@@ -62,6 +64,58 @@ function formatCommentTime(value: string) {
   });
 }
 
+function activityActorName(activity: ActivityLogProfile) {
+  return activity.actorName ?? activity.actorEmail ?? 'Someone';
+}
+
+function formatActivityTime(value: string) {
+  return new Date(value).toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
+function activityFieldLabel(field: string) {
+  const labels: Record<string, string> = {
+    coverPhotoKey: 'cover photo',
+    description: 'description',
+    location: 'location',
+    startsAt: 'date',
+    title: 'title',
+  };
+
+  return labels[field] ?? field;
+}
+
+function activityText(activity: ActivityLogProfile) {
+  const actor = activityActorName(activity);
+
+  if (activity.action === 'event_created') {
+    return `${actor} created this event.`;
+  }
+
+  if (activity.action === 'event_updated') {
+    const changedFields = Array.isArray(activity.metadata.changedFields)
+      ? activity.metadata.changedFields.filter(
+          (field): field is string => typeof field === 'string',
+        )
+      : [];
+    if (changedFields.length > 0) {
+      return `${actor} updated ${changedFields.map(activityFieldLabel).join(', ')}.`;
+    }
+
+    return `${actor} updated this event.`;
+  }
+
+  if (activity.action === 'rsvp_submitted') {
+    return `${actor} RSVP'd ${activity.rsvpStatus ?? 'maybe'}.`;
+  }
+
+  return `${actor} commented.`;
+}
+
 function EventHeroImage({ event }: { event: EventProfile }) {
   const date = formatEventDate(event.startsAt);
 
@@ -96,6 +150,9 @@ export function EventDetailPage() {
   const [commentsStatus, setCommentsStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [commentMessage, setCommentMessage] = useState<string | null>(null);
   const [isPostingComment, setIsPostingComment] = useState(false);
+  const [activities, setActivities] = useState<ActivityLogProfile[]>([]);
+  const [activityStatus, setActivityStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [activityMessage, setActivityMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (!eventId) {
@@ -200,11 +257,59 @@ export function EventDetailPage() {
     };
   }, [eventId]);
 
+  useEffect(() => {
+    if (!eventId) {
+      setActivityStatus('error');
+      setActivityMessage('Event id is missing.');
+      return;
+    }
+
+    let isCurrent = true;
+    setActivityStatus('loading');
+    setActivityMessage(null);
+
+    apiRequest<ActivityLogListResponse>(`/api/events/${eventId}/activity`)
+      .then((response) => {
+        if (!isCurrent) {
+          return;
+        }
+
+        setActivities(response.activities);
+        setActivityStatus('ready');
+      })
+      .catch((err: unknown) => {
+        if (!isCurrent) {
+          return;
+        }
+
+        setActivityStatus('error');
+        setActivityMessage(err instanceof Error ? err.message : 'Unable to load activity.');
+      });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [eventId]);
+
   const formattedDate = useMemo(() => (event ? formatEventDate(event.startsAt) : null), [event]);
   const canInvite =
     authStatus === 'authenticated' &&
     Boolean(user && event && user.role === 'Organizer' && user.sub === event.organizerSub);
   const canRsvp = authStatus === 'authenticated' && user?.role === 'Member';
+
+  async function refreshActivity(targetEventId: string) {
+    try {
+      const response = await apiRequest<ActivityLogListResponse>(
+        `/api/events/${targetEventId}/activity`,
+      );
+      setActivities(response.activities);
+      setActivityStatus('ready');
+      setActivityMessage(null);
+    } catch (err) {
+      setActivityStatus('error');
+      setActivityMessage(err instanceof Error ? err.message : 'Unable to refresh activity.');
+    }
+  }
 
   async function handleRsvpChange(nextStatus: RsvpStatus) {
     if (!event) {
@@ -223,6 +328,7 @@ export function EventDetailPage() {
       setRsvpStatus(response.rsvp.status);
       setEvent(response.event);
       setRsvpMessage(`RSVP saved as ${response.rsvp.status}.`);
+      await refreshActivity(event.id);
     } catch (err) {
       if (err instanceof ApiRequestError && err.status === 403) {
         setRsvpMessage('You need an invitation before you can RSVP.');
@@ -283,6 +389,7 @@ export function EventDetailPage() {
       setComments((current) => [...current, response.comment]);
       setCommentBody('');
       setCommentsStatus('ready');
+      await refreshActivity(event.id);
     } catch (err) {
       setCommentMessage(err instanceof Error ? err.message : 'Unable to post comment.');
     } finally {
@@ -475,6 +582,43 @@ export function EventDetailPage() {
                     <span>{formatCommentTime(comment.createdAt)}</span>
                   </div>
                   <p>{comment.body}</p>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        <section className="activity-feed" aria-label="Activity history">
+          <div className="comment-thread__header">
+            <p className="photo-card__eyebrow">Activity</p>
+            <span>{activities.length}</span>
+          </div>
+
+          {activityMessage ? (
+            <div className="inline-alert" role="status">
+              {activityMessage}
+            </div>
+          ) : null}
+
+          {activityStatus === 'loading' ? (
+            <div className="loading-band" role="status">
+              Loading activity
+            </div>
+          ) : null}
+
+          {activityStatus === 'ready' && activities.length === 0 ? (
+            <p className="comment-thread__empty">No activity yet.</p>
+          ) : null}
+
+          <div className="activity-list">
+            {activities.map((activity) => (
+              <article className="activity-item" key={activity.id}>
+                <span className="activity-item__marker" aria-hidden="true" />
+                <div>
+                  <p>{activityText(activity)}</p>
+                  <time dateTime={activity.createdAt}>
+                    {formatActivityTime(activity.createdAt)}
+                  </time>
                 </div>
               </article>
             ))}

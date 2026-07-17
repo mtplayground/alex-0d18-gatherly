@@ -4,6 +4,7 @@ import type { NextFunction, Request, Response } from 'express';
 import multer from 'multer';
 import { RSVP_STATUSES } from '@app/shared';
 import type {
+  ActivityLogListResponse,
   CreateEventRequest,
   CommentListResponse,
   CommentResponse,
@@ -46,6 +47,8 @@ import { findRsvp, upsertRsvp } from '../rsvps/rsvpRepository';
 import { buildRsvpConfirmationEmail } from '../rsvps/rsvpConfirmationEmail';
 import { toRsvpProfile, type RsvpRecord } from '../rsvps/rsvpModel';
 import { findActiveUserByEmail } from '../users/userRepository';
+import { listActivityLogsByEvent } from '../activity/activityLogRepository';
+import { toActivityLogProfile } from '../activity/activityLogModel';
 
 export interface CreateEventsRouterOptions {
   auth?: AuthConfig;
@@ -776,6 +779,25 @@ export function createEventsRouter(options: CreateEventsRouterOptions): Router {
     }
   });
 
+  router.get('/:eventId/activity', async (req, res, next) => {
+    try {
+      const event = await findEventById(options.databasePool, requireEventId(req));
+      if (!event) {
+        res.status(404).json({ error: { code: 'event_not_found', message: 'Event not found' } });
+        return;
+      }
+
+      const activities = await listActivityLogsByEvent(options.databasePool, event.id);
+      const body: ActivityLogListResponse = {
+        activities: activities.map(toActivityLogProfile),
+      };
+
+      res.json(body);
+    } catch (err) {
+      next(err);
+    }
+  });
+
   router.get('/:eventId', async (req, res, next) => {
     try {
       const event = await findEventById(options.databasePool, requireEventId(req));
@@ -830,7 +852,12 @@ export function createEventsRouter(options: CreateEventsRouterOptions): Router {
         return;
       }
 
-      const event = await updateEvent(options.databasePool, existing.id, parsed.value);
+      const event = await updateEvent(
+        options.databasePool,
+        existing.id,
+        parsed.value,
+        organizer.value,
+      );
       if (!event) {
         res.status(404).json({ error: { code: 'event_not_found', message: 'Event not found' } });
         return;
@@ -903,7 +930,12 @@ export function createEventsRouter(options: CreateEventsRouterOptions): Router {
           body: file.buffer,
         });
 
-        const event = await updateEvent(options.databasePool, existing.id, { coverPhotoKey });
+        const event = await updateEvent(
+          options.databasePool,
+          existing.id,
+          { coverPhotoKey },
+          organizer.value,
+        );
         if (!event) {
           res.status(404).json({ error: { code: 'event_not_found', message: 'Event not found' } });
           return;
