@@ -5,7 +5,7 @@ import helmet from 'helmet';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import type { Pool } from 'pg';
-import type { AuthConfig, EmailConfig } from './config';
+import type { AuthConfig, EmailConfig, ObjectStorageConfig } from './config';
 import { createAuthRouter } from './routes/auth';
 import { createHealthRouter } from './routes/health';
 import { errorHandler } from './middleware/errorHandler';
@@ -14,6 +14,7 @@ export interface CreateAppOptions {
   databasePool: Pool;
   auth?: AuthConfig;
   email?: EmailConfig;
+  objectStorage: ObjectStorageConfig;
   selfUrl: string;
   clientDistDir?: string;
 }
@@ -38,6 +39,7 @@ export function createApp(options: CreateAppOptions) {
     '/api/auth',
     createAuthRouter({
       databasePool: options.databasePool,
+      objectStorage: options.objectStorage,
       selfUrl: options.selfUrl,
       ...(options.auth ? { auth: options.auth } : {}),
       ...(options.email ? { email: options.email } : {}),

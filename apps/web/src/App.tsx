@@ -134,13 +134,25 @@ export function App() {
         title={`Ready for the next gathering, ${user.name ?? user.email}`}
         summary={`You are signed in as ${user.role}. Upcoming event tools will build on this workspace.`}
         aside={
-          <div className="shell-aside">
-            <span className="aside-value">{user.role === 'Organizer' ? 'OR' : 'MB'}</span>
-            <span className="aside-label">{user.role}</span>
+          <div className="profile-aside">
+            <div className="avatar avatar--header">
+              {user.profilePhotoUrl ? (
+                <img src={user.profilePhotoUrl} alt="" />
+              ) : (
+                <span>{(user.name ?? user.email).slice(0, 1)}</span>
+              )}
+            </div>
+            <div className="shell-aside">
+              <span className="aside-value">{user.role === 'Organizer' ? 'OR' : 'MB'}</span>
+              <span className="aside-label">{user.role}</span>
+            </div>
           </div>
         }
       >
         <section className="workspace-actions" aria-label="Workspace actions">
+          <Link className="button button--primary" to="/profile">
+            Profile photo
+          </Link>
           <Link className="button button--primary" to="/signup">
             Update role
           </Link>

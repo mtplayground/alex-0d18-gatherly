@@ -94,6 +94,12 @@ h1 {
   justify-self: end;
 }
 
+.profile-aside {
+  display: flex;
+  align-items: end;
+  gap: 16px;
+}
+
 .shell-aside {
   display: grid;
   gap: 2px;
@@ -114,6 +120,31 @@ h1 {
   font-size: 0.9rem;
   font-weight: 700;
   text-transform: uppercase;
+}
+
+.avatar {
+  display: grid;
+  overflow: hidden;
+  place-items: center;
+  border: 2px solid var(--color-surface);
+  border-radius: 999px;
+  background: var(--color-plum);
+  color: #fffdf8;
+  font-weight: 850;
+  text-transform: uppercase;
+  box-shadow: var(--shadow-card);
+}
+
+.avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.avatar--header {
+  width: 72px;
+  height: 72px;
+  font-size: 2rem;
 }
 
 .workspace-actions {
@@ -401,6 +432,50 @@ h1 {
   font-weight: 850;
 }
 
+.profile-settings {
+  display: grid;
+  width: min(100%, 520px);
+  gap: 18px;
+  margin-top: clamp(28px, 4vw, 42px);
+}
+
+.avatar-preview {
+  display: grid;
+  overflow: hidden;
+  width: 132px;
+  height: 132px;
+  place-items: center;
+  border: 3px solid var(--color-surface);
+  border-radius: 999px;
+  background: var(--color-plum);
+  color: #fffdf8;
+  font-size: 3rem;
+  font-weight: 850;
+  text-transform: uppercase;
+  box-shadow: var(--shadow-card);
+}
+
+.avatar-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.file-field {
+  display: grid;
+  gap: 8px;
+  color: var(--color-ink);
+  font-weight: 800;
+}
+
+.file-field input {
+  width: 100%;
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--color-surface);
+}
+
 .verification-panel {
   display: grid;
   width: min(100%, 720px);
@@ -430,6 +505,10 @@ h1 {
 
   .shell-header-aside {
     justify-self: start;
+  }
+
+  .profile-aside {
+    align-items: center;
   }
 
   .photo-grid {
