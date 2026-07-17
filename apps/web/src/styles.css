@@ -819,6 +819,46 @@ h1 {
   line-height: 1.6;
 }
 
+.event-rsvp-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.rsvp-buttons {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.rsvp-button {
+  display: grid;
+  gap: 4px;
+  min-height: 76px;
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--color-surface);
+  color: var(--color-muted);
+  cursor: pointer;
+  text-align: left;
+}
+
+.rsvp-button strong {
+  color: var(--color-ink);
+  font-size: 1rem;
+}
+
+.rsvp-button span {
+  font-size: 0.78rem;
+  font-weight: 750;
+}
+
+.rsvp-button--active {
+  border-color: var(--color-teal);
+  background: rgb(22 124 118 / 10%);
+  color: var(--color-ink);
+}
+
 .event-invite-form {
   display: grid;
   gap: 12px;
@@ -918,6 +958,10 @@ h1 {
     min-height: auto;
     border-left: 0;
     border-top: 1px solid var(--color-line);
+  }
+
+  .rsvp-buttons {
+    grid-template-columns: 1fr;
   }
 
   .organizer-event-row__actions {

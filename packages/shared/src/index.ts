@@ -116,6 +116,19 @@ export interface RsvpProfile {
   respondedAt: string;
 }
 
+export interface RsvpStatusResponse {
+  rsvp: RsvpProfile | null;
+}
+
+export interface UpdateRsvpRequest {
+  status: RsvpStatus;
+}
+
+export interface RsvpResponse {
+  rsvp: RsvpProfile;
+  event: EventProfile;
+}
+
 export interface CreateEventRequest {
   title: string;
   description?: string | null;
