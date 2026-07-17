@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { EventFeedCard } from '../components/EventFeedCard';
 import { AppShell } from '../components/ui/AppShell';
-import { apiRequest } from '../lib/api';
+import { apiRequest, friendlyApiErrorMessage } from '../lib/api';
 
 export function EventFeedPage() {
   const { status, user } = useAuth();
@@ -34,7 +34,7 @@ export function EventFeedPage() {
           return;
         }
 
-        setMessage(err instanceof Error ? err.message : 'Unable to load your event feed.');
+        setMessage(friendlyApiErrorMessage(err, 'Unable to load your event feed.'));
       })
       .finally(() => {
         if (isCurrent) {
@@ -129,6 +129,10 @@ export function EventFeedPage() {
         <section className="event-feed-empty">
           <p className="eyebrow">No invitations</p>
           <h2>No upcoming event invitations yet</h2>
+          <p>
+            When an Organizer invites you to an event, it will appear here with the latest RSVP
+            count.
+          </p>
           <Link className="button button--secondary" to="/profile">
             Check profile
           </Link>

@@ -313,10 +313,23 @@ h1 {
 
 .event-feed-card__fallback {
   display: grid;
+  gap: 12px;
   place-items: center;
+  align-content: center;
   background:
     linear-gradient(145deg, rgb(233 95 61 / 34%), transparent 52%),
     linear-gradient(320deg, rgb(22 124 118 / 34%), transparent 48%), #44312a;
+}
+
+.event-feed-card__fallback small {
+  border: 1px solid rgb(255 253 248 / 38%);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: rgb(0 0 0 / 22%);
+  color: rgb(255 253 248 / 84%);
+  font-size: 0.78rem;
+  font-weight: 850;
+  text-transform: uppercase;
 }
 
 .event-feed-card__fallback span {
@@ -387,6 +400,14 @@ h1 {
   color: var(--color-ink);
   font-size: clamp(1.8rem, 5vw, 3rem);
   line-height: 1;
+}
+
+.event-feed-empty p:not(.eyebrow) {
+  max-width: 620px;
+  margin: 0;
+  color: var(--color-muted);
+  font-weight: 720;
+  line-height: 1.5;
 }
 
 .auth-page {
@@ -675,6 +696,20 @@ h1 {
   max-width: 620px;
   font-size: clamp(2rem, 6vw, 5rem);
   line-height: 0.94;
+}
+
+.event-cover-fallback em,
+.event-detail-fallback em {
+  width: fit-content;
+  border: 1px solid rgb(40 30 24 / 14%);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: rgb(255 253 248 / 72%);
+  color: var(--color-muted);
+  font-size: 0.78rem;
+  font-style: normal;
+  font-weight: 850;
+  text-transform: uppercase;
 }
 
 .event-cover-fallback__date {

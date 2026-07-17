@@ -8,7 +8,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
-import { apiRequest } from '../lib/api';
+import { apiRequest, friendlyApiErrorMessage } from '../lib/api';
+
+const allowedCoverPhotoTypes = new Set(['image/jpeg', 'image/png', 'image/webp']);
+const maxCoverPhotoBytes = 8 * 1024 * 1024;
 
 function formatLocalDateTime(date: Date): string {
   const offsetMs = date.getTimezoneOffset() * 60 * 1000;
@@ -45,6 +48,7 @@ function EventCoverPreview({
         <img src={coverUrl} alt="" />
       ) : (
         <div className="event-cover-fallback">
+          <em>No cover photo</em>
           <span className="event-cover-fallback__date">{displayDate}</span>
           <strong>{displayTitle}</strong>
           <span>{displayLocation}</span>
@@ -88,6 +92,31 @@ export function EventFormPage() {
     setCoverPreviewUrl(null);
   }, []);
 
+  function handleCoverFileChange(file: File | null) {
+    setCoverFile(file);
+
+    if (!file) {
+      return;
+    }
+
+    if (!allowedCoverPhotoTypes.has(file.type)) {
+      setStatusMessage('Upload a JPEG, PNG, or WebP cover photo.');
+      setIsSuccess(false);
+      setCoverFile(null);
+      return;
+    }
+
+    if (file.size > maxCoverPhotoBytes) {
+      setStatusMessage('That cover photo is too large. Upload an image that is 8 MB or smaller.');
+      setIsSuccess(false);
+      setCoverFile(null);
+      return;
+    }
+
+    setStatusMessage(null);
+    setIsSuccess(false);
+  }
+
   useEffect(() => {
     if (!coverFile) {
       setCoverPreviewUrl(null);
@@ -124,8 +153,7 @@ export function EventFormPage() {
           return;
         }
 
-        const message = err instanceof Error ? err.message : 'Unable to load event.';
-        setStatusMessage(message);
+        setStatusMessage(friendlyApiErrorMessage(err, 'Unable to load event.'));
         setIsSuccess(false);
       })
       .finally(() => {
@@ -207,8 +235,7 @@ export function EventFormPage() {
             : 'Event saved.',
       );
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Unable to save event.';
-      setStatusMessage(message);
+      setStatusMessage(friendlyApiErrorMessage(err, 'Unable to save event.'));
       setIsSuccess(false);
     } finally {
       setIsSaving(false);
@@ -326,7 +353,7 @@ export function EventFormPage() {
             <input
               type="file"
               accept="image/jpeg,image/png,image/webp"
-              onChange={(event) => setCoverFile(event.target.files?.[0] ?? null)}
+              onChange={(event) => handleCoverFileChange(event.target.files?.[0] ?? null)}
             />
           </label>
 

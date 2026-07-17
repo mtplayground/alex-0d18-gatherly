@@ -4,7 +4,7 @@ import { useAuth } from '../auth/AuthContext';
 import { frontendUrl, platformAuthPath, redirectToPlatformAuth } from '../auth/redirects';
 
 export function SignInPage() {
-  const { status, user } = useAuth();
+  const { error, status, user } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const returnTo = useMemo(() => frontendUrl('/'), []);
@@ -32,6 +32,12 @@ export function SignInPage() {
             Pick up the plans, photos, and guest details you already started.
           </p>
         </div>
+
+        {error ? (
+          <div className="inline-alert" role="status">
+            {error}
+          </div>
+        ) : null}
 
         {status === 'authenticated' && user ? (
           <div className="auth-status">

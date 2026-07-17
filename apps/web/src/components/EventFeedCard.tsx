@@ -27,6 +27,7 @@ export function EventFeedCard({ event }: { event: EventProfile }) {
           <img src={event.coverPhotoUrl} alt="" loading="lazy" />
         ) : (
           <div className="event-feed-card__fallback" aria-hidden="true">
+            <small>No cover photo</small>
             <span>{date.day}</span>
           </div>
         )}
