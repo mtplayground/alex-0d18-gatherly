@@ -143,6 +143,8 @@ export interface CommentProfile {
   authorSub: string;
   authorName: string | null;
   authorEmail: string | null;
+  authorProfilePhotoKey: string | null;
+  authorProfilePhotoUrl: string | null;
   body: string;
   createdAt: string;
   updatedAt: string;
@@ -160,6 +162,18 @@ export interface ActivityLogProfile {
   rsvpStatus: RsvpStatus | null;
   metadata: Record<string, unknown>;
   createdAt: string;
+}
+
+export interface CreateCommentRequest {
+  body: string;
+}
+
+export interface CommentResponse {
+  comment: CommentProfile;
+}
+
+export interface CommentListResponse {
+  comments: CommentProfile[];
 }
 
 export interface CreateEventRequest {

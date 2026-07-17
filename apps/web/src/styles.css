@@ -758,7 +758,7 @@ h1 {
 
 .event-detail-panel {
   display: grid;
-  align-content: center;
+  align-content: start;
   gap: 28px;
   min-height: 100vh;
   border-left: 1px solid var(--color-line);
@@ -884,6 +884,135 @@ h1 {
   color: var(--color-ink);
   font: inherit;
   text-transform: none;
+}
+
+.comment-thread {
+  display: grid;
+  gap: 14px;
+  border-top: 1px solid var(--color-line);
+  padding-top: 20px;
+}
+
+.comment-thread__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.comment-thread__header span {
+  display: inline-grid;
+  min-width: 34px;
+  min-height: 34px;
+  place-items: center;
+  border: 1px solid var(--color-line);
+  border-radius: 50%;
+  color: var(--color-ink);
+  font-weight: 850;
+}
+
+.comment-form {
+  display: grid;
+  gap: 10px;
+}
+
+.comment-form label {
+  display: grid;
+  gap: 8px;
+  color: var(--color-muted);
+  font-size: 0.82rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.comment-form textarea {
+  width: 100%;
+  min-height: 92px;
+  resize: vertical;
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+  padding: 12px 14px;
+  background: var(--color-surface);
+  color: var(--color-ink);
+  font: inherit;
+  line-height: 1.45;
+  text-transform: none;
+}
+
+.comment-thread__empty {
+  margin: 0;
+  color: var(--color-muted);
+  font-weight: 700;
+}
+
+.comment-list {
+  display: grid;
+  gap: 10px;
+}
+
+.comment-item {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 10px;
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--color-surface);
+}
+
+.comment-avatar {
+  width: 42px;
+  height: 42px;
+  overflow: hidden;
+  border-radius: 50%;
+  background: rgb(22 124 118 / 12%);
+}
+
+.comment-avatar img,
+.comment-avatar span {
+  width: 100%;
+  height: 100%;
+}
+
+.comment-avatar img {
+  object-fit: cover;
+}
+
+.comment-avatar span {
+  display: grid;
+  place-items: center;
+  color: var(--color-teal);
+  font-weight: 900;
+}
+
+.comment-item__body {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.comment-item__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 10px;
+}
+
+.comment-item__meta strong {
+  color: var(--color-ink);
+}
+
+.comment-item__meta span {
+  color: var(--color-muted);
+  font-size: 0.78rem;
+  font-weight: 750;
+}
+
+.comment-item p {
+  margin: 0;
+  color: var(--color-muted);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 
 .verification-panel {

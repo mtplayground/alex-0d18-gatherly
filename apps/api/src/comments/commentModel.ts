@@ -6,6 +6,7 @@ export interface CommentRow {
   author_sub: string;
   author_name?: string | null;
   author_email?: string | null;
+  author_profile_photo_key?: string | null;
   body: string;
   created_at: Date;
   updated_at: Date;
@@ -18,6 +19,7 @@ export interface CommentRecord {
   authorSub: string;
   authorName: string | null;
   authorEmail: string | null;
+  authorProfilePhotoKey: string | null;
   body: string;
   createdAt: Date;
   updatedAt: Date;
@@ -31,6 +33,7 @@ export function mapCommentRow(row: CommentRow): CommentRecord {
     authorSub: row.author_sub,
     authorName: row.author_name ?? null,
     authorEmail: row.author_email ?? null,
+    authorProfilePhotoKey: row.author_profile_photo_key ?? null,
     body: row.body,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -45,6 +48,8 @@ export function toCommentProfile(comment: CommentRecord): CommentProfile {
     authorSub: comment.authorSub,
     authorName: comment.authorName,
     authorEmail: comment.authorEmail,
+    authorProfilePhotoKey: comment.authorProfilePhotoKey,
+    authorProfilePhotoUrl: null,
     body: comment.body,
     createdAt: comment.createdAt.toISOString(),
     updatedAt: comment.updatedAt.toISOString(),
