@@ -37,7 +37,8 @@ import { buildInvitationEmail } from '../invitations/invitationEmail';
 import { createInvitation, findActiveInvitationForUser } from '../invitations/invitationRepository';
 import { toInvitationProfile, type InvitationRecord } from '../invitations/invitationModel';
 import { findRsvp, upsertRsvp } from '../rsvps/rsvpRepository';
-import { toRsvpProfile } from '../rsvps/rsvpModel';
+import { buildRsvpConfirmationEmail } from '../rsvps/rsvpConfirmationEmail';
+import { toRsvpProfile, type RsvpRecord } from '../rsvps/rsvpModel';
 import { findActiveUserByEmail } from '../users/userRepository';
 
 export interface CreateEventsRouterOptions {
@@ -522,6 +523,43 @@ async function sendInvitationEmail(input: {
   }
 }
 
+async function sendRsvpConfirmationEmail(input: {
+  email: EmailConfig | undefined;
+  event: EventRecord;
+  rsvp: RsvpRecord;
+  selfUrl: string;
+}): Promise<void> {
+  if (!input.email || !input.rsvp.memberEmail) {
+    return;
+  }
+
+  const email = buildRsvpConfirmationEmail({
+    event: input.event,
+    eventUrl: eventUrl(input.selfUrl, input.event.id),
+    rsvp: input.rsvp,
+  });
+
+  try {
+    await sendEmail(input.email, {
+      to: input.rsvp.memberEmail,
+      subject: email.subject,
+      html: email.html,
+      text: email.text,
+      ...(input.event.organizerEmail ? { replyTo: input.event.organizerEmail } : {}),
+    });
+  } catch (err) {
+    if (err instanceof EmailSendError && err.status === 429) {
+      console.warn('RSVP confirmation email rate limited', {
+        eventId: input.event.id,
+        memberSub: input.rsvp.memberSub,
+      });
+      return;
+    }
+
+    console.error('RSVP confirmation email failed', err);
+  }
+}
+
 export function createEventsRouter(options: CreateEventsRouterOptions): Router {
   const router = Router();
   const objectStorage = createObjectStorage(options.objectStorage);
@@ -885,11 +923,20 @@ export function createEventsRouter(options: CreateEventsRouterOptions): Router {
         return;
       }
 
+      const previousRsvp = await findRsvp(options.databasePool, event.id, member.value);
       const rsvp = await upsertRsvp(options.databasePool, {
         eventId: event.id,
         memberSub: member.value,
         status: parsed.value,
       });
+      if (!previousRsvp || previousRsvp.status !== rsvp.status) {
+        await sendRsvpConfirmationEmail({
+          email: options.email,
+          event,
+          rsvp,
+          selfUrl: options.selfUrl,
+        });
+      }
       const updatedEvent = await findEventById(options.databasePool, event.id);
       if (!updatedEvent) {
         res.status(404).json({ error: { code: 'event_not_found', message: 'Event not found' } });
