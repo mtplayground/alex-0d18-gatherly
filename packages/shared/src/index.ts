@@ -44,3 +44,19 @@ export interface AuthSessionResponse {
 export interface UpdateCurrentUserRequest {
   role: UserRole;
 }
+
+export type VerificationEmailStatus = 'sent' | 'already_verified' | 'email_not_configured';
+
+export interface VerificationEmailResponse {
+  status: VerificationEmailStatus;
+  expiresAt: string | null;
+}
+
+export interface VerifyEmailRequest {
+  token: string;
+}
+
+export interface VerifyEmailResponse {
+  status: 'verified';
+  user: UserProfile;
+}

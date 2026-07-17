@@ -12,6 +12,7 @@ async function main() {
     databasePool,
     selfUrl: config.selfUrl,
     ...(config.auth ? { auth: config.auth } : {}),
+    ...(config.email ? { email: config.email } : {}),
     ...(config.clientDistDir ? { clientDistDir: config.clientDistDir } : {}),
   });
 

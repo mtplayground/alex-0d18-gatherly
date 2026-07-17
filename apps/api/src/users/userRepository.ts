@@ -40,7 +40,7 @@ export async function upsertAuthenticatedUser(
       SET
         email = EXCLUDED.email,
         name = EXCLUDED.name,
-        email_verified = EXCLUDED.email_verified,
+        email_verified = users.email_verified OR EXCLUDED.email_verified,
         last_seen_at = NOW(),
         account_metadata = users.account_metadata || EXCLUDED.account_metadata,
         updated_at = NOW()

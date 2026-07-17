@@ -3,17 +3,28 @@ import type { Response } from 'express';
 import type {
   AuthLoginUrlResponse,
   AuthSessionResponse,
+  VerificationEmailResponse,
+  VerifyEmailRequest,
+  VerifyEmailResponse,
   UpdateCurrentUserRequest,
 } from '@app/shared';
 import type { Pool } from 'pg';
-import type { AuthConfig } from '../config';
+import type { AuthConfig, EmailConfig } from '../config';
+import {
+  consumeEmailVerificationToken,
+  createEmailVerificationToken,
+} from '../auth/emailVerificationRepository';
+import { sendVerificationEmail } from '../auth/emailVerificationEmail';
 import { createAuthMiddleware } from '../middleware/authMiddleware';
+import { EmailSendError } from '../email/emailClient';
 import { isUserRole, toUserProfile } from '../users/userModel';
+import type { UserRecord } from '../users/userModel';
 import { updateAuthenticatedUserRole } from '../users/userRepository';
 
 export interface CreateAuthRouterOptions {
   auth?: AuthConfig;
   databasePool: Pool;
+  email?: EmailConfig;
   selfUrl: string;
 }
 
@@ -81,6 +92,33 @@ function redirectToLogin(
   res.redirect(buildLoginUrl(auth, returnTo));
 }
 
+async function requestVerificationEmail(
+  options: CreateAuthRouterOptions,
+  user: UserRecord,
+): Promise<VerificationEmailResponse> {
+  if (user.emailVerified) {
+    return {
+      status: 'already_verified',
+      expiresAt: null,
+    };
+  }
+
+  if (!options.email) {
+    return {
+      status: 'email_not_configured',
+      expiresAt: null,
+    };
+  }
+
+  const token = await createEmailVerificationToken(options.databasePool, user.sub, user.email);
+  const status = await sendVerificationEmail(options.email, options.selfUrl, user, token.token);
+
+  return {
+    status,
+    expiresAt: token.expiresAt.toISOString(),
+  };
+}
+
 export function createAuthRouter(options: CreateAuthRouterOptions): Router {
   const router = Router();
   const { requireAuth } = createAuthMiddleware({
@@ -143,11 +181,17 @@ export function createAuthRouter(options: CreateAuthRouterOptions): Router {
     redirectToLogin(options.auth, options.selfUrl, firstQueryValue(req.query.return_to), res);
   });
 
-  router.get('/me', requireAuth, (req, res, next) => {
+  router.get('/me', requireAuth, async (req, res, next) => {
     try {
       if (!req.auth) {
         next(new Error('Authenticated route missing auth context'));
         return;
+      }
+
+      if (req.auth.registration === 'created' && !req.auth.user.emailVerified) {
+        requestVerificationEmail(options, req.auth.user).catch((err: unknown) => {
+          console.error('Failed to send verification email after sign-up', err);
+        });
       }
 
       const body: AuthSessionResponse = {
@@ -156,6 +200,62 @@ export function createAuthRouter(options: CreateAuthRouterOptions): Router {
       };
 
       res.json(body);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.post('/verification-email', requireAuth, async (req, res, next) => {
+    try {
+      if (!req.auth) {
+        next(new Error('Authenticated route missing auth context'));
+        return;
+      }
+
+      const body = await requestVerificationEmail(options, req.auth.user);
+      res.status(body.status === 'email_not_configured' ? 202 : 200).json(body);
+    } catch (err) {
+      if (err instanceof EmailSendError && err.status === 429) {
+        res.status(429).json({
+          error: {
+            code: 'email_rate_limited',
+            message: 'Verification email is rate limited. Try again shortly.',
+          },
+        });
+        return;
+      }
+
+      next(err);
+    }
+  });
+
+  router.post('/verify-email', async (req, res, next) => {
+    try {
+      const body = req.body as Partial<VerifyEmailRequest>;
+      if (typeof body.token !== 'string' || body.token.trim().length === 0) {
+        res
+          .status(400)
+          .json({ error: { code: 'invalid_token', message: 'Verification token is required' } });
+        return;
+      }
+
+      const user = await consumeEmailVerificationToken(options.databasePool, body.token);
+      if (!user) {
+        res.status(400).json({
+          error: {
+            code: 'invalid_or_expired_token',
+            message: 'Verification link is invalid or expired',
+          },
+        });
+        return;
+      }
+
+      const responseBody: VerifyEmailResponse = {
+        status: 'verified',
+        user: toUserProfile(user),
+      };
+
+      res.json(responseBody);
     } catch (err) {
       next(err);
     }
