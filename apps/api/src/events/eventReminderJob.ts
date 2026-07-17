@@ -23,6 +23,15 @@ function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : 'Unknown reminder email error';
 }
 
+function isUndefinedTableError(err: unknown): boolean {
+  return Boolean(
+    err &&
+      typeof err === 'object' &&
+      'code' in err &&
+      (err as { code?: unknown }).code === '42P01',
+  );
+}
+
 export async function runEventReminderJob(input: {
   databasePool: Pool;
   email?: EmailConfig;
@@ -100,6 +109,11 @@ export function startEventReminderJob(input: {
     isRunning = true;
     runEventReminderJob(input)
       .catch((err: unknown) => {
+        if (isUndefinedTableError(err)) {
+          console.warn('Event reminder job skipped until database migrations are applied');
+          return;
+        }
+
         console.error('Event reminder job failed', err);
       })
       .finally(() => {

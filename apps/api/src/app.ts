@@ -31,7 +31,15 @@ export function createApp(options: CreateAppOptions) {
   app.set('trust proxy', 1);
   app.disable('x-powered-by');
 
-  app.use(helmet());
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        directives: {
+          'img-src': ["'self'", 'data:', 'blob:', 'https://images.unsplash.com'],
+        },
+      },
+    }),
+  );
   app.use(compression());
   app.use(cookieParser());
   app.use(express.json({ limit: '1mb' }));

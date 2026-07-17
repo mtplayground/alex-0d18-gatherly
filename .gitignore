@@ -14,3 +14,7 @@ packages/*/dist/
 .pipeline-state.json
 .gitkeep
 .progress
+
+.deploy_url
+ui-verify.js
+verify-screenshot.png

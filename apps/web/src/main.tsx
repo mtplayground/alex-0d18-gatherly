@@ -2,6 +2,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { RouterProvider } from 'react-router-dom';
 import { AuthProvider } from './auth/AuthContext';
+import { MctaiWatermark } from './components/MctaiWatermark';
 import { router } from './routes';
 import './theme.css';
 import './styles.css';
@@ -16,6 +17,7 @@ createRoot(root).render(
   <StrictMode>
     <AuthProvider>
       <RouterProvider router={router} />
+      <MctaiWatermark />
     </AuthProvider>
   </StrictMode>,
 );
