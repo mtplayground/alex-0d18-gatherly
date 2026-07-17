@@ -3,9 +3,8 @@ import type { Response } from 'express';
 import type { AuthLoginUrlResponse, AuthSessionResponse } from '@app/shared';
 import type { Pool } from 'pg';
 import type { AuthConfig } from '../config';
-import { createSessionVerifier } from '../auth/session';
+import { createAuthMiddleware } from '../middleware/authMiddleware';
 import { toUserProfile } from '../users/userModel';
-import { upsertAuthenticatedUser } from '../users/userRepository';
 
 export interface CreateAuthRouterOptions {
   auth?: AuthConfig;
@@ -79,10 +78,13 @@ function redirectToLogin(
 
 export function createAuthRouter(options: CreateAuthRouterOptions): Router {
   const router = Router();
-  const verifySession = options.auth ? createSessionVerifier(options.auth) : undefined;
+  const { requireAuth } = createAuthMiddleware({
+    databasePool: options.databasePool,
+    ...(options.auth ? { auth: options.auth } : {}),
+  });
 
   router.get('/login-url', (req, res) => {
-    if (!options.auth || !verifySession) {
+    if (!options.auth) {
       res
         .status(503)
         .json({ error: { code: 'auth_not_configured', message: 'Auth is not configured' } });
@@ -136,28 +138,16 @@ export function createAuthRouter(options: CreateAuthRouterOptions): Router {
     redirectToLogin(options.auth, options.selfUrl, firstQueryValue(req.query.return_to), res);
   });
 
-  router.get('/me', async (req, res, next) => {
-    const sessionVerifier = verifySession;
-    if (!options.auth || !sessionVerifier) {
-      res
-        .status(503)
-        .json({ error: { code: 'auth_not_configured', message: 'Auth is not configured' } });
-      return;
-    }
-
+  router.get('/me', requireAuth, (req, res, next) => {
     try {
-      const claims = await sessionVerifier(req);
-      if (!claims) {
-        res
-          .status(401)
-          .json({ error: { code: 'not_authenticated', message: 'Not authenticated' } });
+      if (!req.auth) {
+        next(new Error('Authenticated route missing auth context'));
         return;
       }
 
-      const result = await upsertAuthenticatedUser(options.databasePool, claims);
       const body: AuthSessionResponse = {
-        user: toUserProfile(result.user),
-        registration: result.registration,
+        user: toUserProfile(req.auth.user),
+        registration: req.auth.registration,
       };
 
       res.json(body);
