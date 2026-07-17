@@ -1,5 +1,6 @@
 import { createBrowserRouter } from 'react-router-dom';
 import { App } from './App';
+import { EventFormPage } from './pages/EventFormPage';
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
 import { ProfileSettingsPage } from './pages/ProfileSettingsPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
@@ -19,6 +20,10 @@ export const router = createBrowserRouter([
   {
     path: '/forgot-password',
     element: <ForgotPasswordPage />,
+  },
+  {
+    path: '/events/new',
+    element: <EventFormPage />,
   },
   {
     path: '/reset-password',

@@ -1,5 +1,7 @@
+import { randomUUID } from 'node:crypto';
 import { Router } from 'express';
-import type { Request, Response } from 'express';
+import type { NextFunction, Request, Response } from 'express';
+import multer from 'multer';
 import type {
   CreateEventRequest,
   EventListResponse,
@@ -35,6 +37,22 @@ interface ValidationResult<T> {
     message: string;
   };
 }
+
+const allowedCoverPhotoTypes = new Map([
+  ['image/jpeg', 'jpg'],
+  ['image/png', 'png'],
+  ['image/webp', 'webp'],
+]);
+const maxCoverPhotoBytes = 8 * 1024 * 1024;
+
+const coverPhotoUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: maxCoverPhotoBytes,
+    files: 1,
+  },
+});
+const coverPhotoUploadSingle = coverPhotoUpload.single('cover');
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === 'object' && !Array.isArray(value));
@@ -311,6 +329,36 @@ function requireEventId(req: Request): string {
   return eventId;
 }
 
+function buildCoverPhotoKey(eventId: string, contentType: string): string {
+  const extension = allowedCoverPhotoTypes.get(contentType);
+  if (!extension) {
+    throw new Error(`Unsupported event cover photo content type: ${contentType}`);
+  }
+
+  return `events/${eventId}/cover/${Date.now()}-${randomUUID()}.${extension}`;
+}
+
+function handleCoverPhotoUpload(req: Request, res: Response, next: NextFunction) {
+  coverPhotoUploadSingle(req, res, (err: unknown) => {
+    if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
+      res.status(400).json({
+        error: {
+          code: 'cover_photo_too_large',
+          message: 'Event cover photo must be 8 MB or smaller',
+        },
+      });
+      return;
+    }
+
+    if (err) {
+      next(err);
+      return;
+    }
+
+    next();
+  });
+}
+
 async function toSignedEvent(storage: ObjectStorage, event: EventRecord) {
   const profile = toEventProfile(event);
   if (!event.coverPhotoKey) {
@@ -461,6 +509,80 @@ export function createEventsRouter(options: CreateEventsRouterOptions): Router {
       next(err);
     }
   });
+
+  router.post(
+    '/:eventId/cover-photo',
+    requireAuth,
+    handleCoverPhotoUpload,
+    async (req, res, next) => {
+      try {
+        const organizer = requireOrganizer(req);
+        if (organizer.error || !organizer.value) {
+          sendValidationError(
+            res,
+            organizer.error ?? { code: 'not_authenticated', message: 'Not authenticated' },
+          );
+          return;
+        }
+
+        const eventId = requireEventId(req);
+        const existing = await ensureOwnedOrganizerEvent(
+          options.databasePool,
+          eventId,
+          organizer.value,
+        );
+        if (!existing) {
+          res.status(404).json({ error: { code: 'event_not_found', message: 'Event not found' } });
+          return;
+        }
+        if (existing === 'forbidden') {
+          res.status(403).json({
+            error: { code: 'event_forbidden', message: 'Event is owned by another organizer' },
+          });
+          return;
+        }
+
+        const file = req.file;
+        if (!file) {
+          res
+            .status(400)
+            .json({ error: { code: 'cover_photo_required', message: 'Cover photo is required' } });
+          return;
+        }
+
+        if (!allowedCoverPhotoTypes.has(file.mimetype)) {
+          res.status(400).json({
+            error: {
+              code: 'unsupported_cover_photo_type',
+              message: 'Cover photo must be a JPEG, PNG, or WebP image',
+            },
+          });
+          return;
+        }
+
+        const coverPhotoKey = buildCoverPhotoKey(existing.id, file.mimetype);
+        await objectStorage.uploadBuffer({
+          relativeKey: coverPhotoKey,
+          contentType: file.mimetype,
+          body: file.buffer,
+        });
+
+        const event = await updateEvent(options.databasePool, existing.id, { coverPhotoKey });
+        if (!event) {
+          res.status(404).json({ error: { code: 'event_not_found', message: 'Event not found' } });
+          return;
+        }
+
+        const body: EventResponse = {
+          event: await toSignedEvent(objectStorage, event),
+        };
+
+        res.json(body);
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
 
   router.delete('/:eventId', requireAuth, async (req, res, next) => {
     try {
