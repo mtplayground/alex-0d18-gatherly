@@ -1,0 +1,36 @@
+Architecture plan for issues #1-#31
+
+Module structure and file organization
+- Use a full-stack web app with a dedicated frontend and backend laid out under top-level app directories, plus shared packages for cross-cutting contracts.
+- Frontend: route-based pages for auth, organizer dashboard, event feed, event detail, event forms, profile, invite/RSVP flows, and reusable photo-forward UI components. Keep design tokens, layout shell, form controls, empty states, and upload widgets in a shared UI area.
+- Backend: API modules grouped by domain: auth, users, events, invitations, RSVPs, comments, activity, uploads, mail, scheduler, and health/config. Keep route handlers thin and move business logic into services.
+- Shared types: define request/response DTOs, enum values, validation schemas, and public model projections in one shared layer consumed by frontend and backend where the selected stack supports it. Keep database-only fields out of public types.
+- Database: migrations are the source of truth. Model users first, then events, invitations/RSVPs, comments/activity history, and attachment metadata. Include timestamps, ownership fields, and indexes for organizer dashboards, event feeds, invite lookups, and reminder jobs.
+- Storage: abstract uploads behind an attachment service so profile photos, event cover photos, and event PDFs share validation, metadata persistence, and provider-specific implementation details.
+- Email: centralize transactional templates and delivery behind a mail service used by verification, password reset, invitations, RSVP confirmations, and reminders.
+- Configuration: load environment variables through one typed config module. Include database URL, auth/session secrets, OAuth credentials, mail provider settings, upload storage settings, public origin/CORS configuration, and scheduler controls.
+
+Issue dependency map
+- #1 is the foundation for project structure, scripts, local development, and baseline CI assumptions.
+- #2 depends on #1 and enables all persistence-backed features.
+- #3 should land immediately after #1/#2 so later issues use typed configuration instead of ad hoc environment reads.
+- #4 can start after #1 and should define the visual shell, tokens, page layout, and reusable components used by all frontend issues.
+- #5-#12 form the auth/user track: user model, email/password auth, Google sign-in, persistent sessions, auth pages, email verification, password reset, and profile photo upload.
+- #13-#18 form the event core track: event model, CRUD API, cover uploads, create/edit form, organizer dashboard, and event detail page.
+- #19-#22 add collaboration and messaging: invitation/RSVP models, invite flow, RSVP endpoint/UI, and transactional emails.
+- #23-#26 add engagement surfaces: comments, activity history, activity view, and photo-forward event feed.
+- #27 builds on upload infrastructure and event ownership rules to add PDF attachments.
+- #28 depends on events, RSVPs/invitations, email, and scheduler configuration.
+- #29 should exercise the core happy paths across auth, event creation, invitations, RSVPs, comments, uploads, and reminders where practical.
+- #30 should review every user-facing surface for validation, authorization failures, empty states, loading states, and recoverable errors.
+- #31 should finalize deployment configuration, production environment documentation, proxy-aware origin handling, build commands, migrations, and operational checks.
+
+Key design decisions
+- Treat authentication and authorization as backend concerns first. Frontend route guards improve UX, but every protected API route must verify the session and ownership/membership rules.
+- Use server-generated IDs and database constraints for integrity. Prefer explicit join/relationship tables for invitations, RSVPs, comments, activity, and attachments.
+- Store uploaded file metadata in the database and binary data in the configured storage provider or local development storage abstraction.
+- Make event visibility explicit: organizer-owned dashboard data is separate from member/invitee feed data.
+- Normalize activity history as append-only events emitted by domain services when meaningful actions occur.
+- Use idempotent scheduled reminder jobs keyed by event and recipient so retries do not duplicate emails.
+- Respect reverse proxy headers in production. Public origin checks must use forwarded host/proto or the platform-provided allowed origin instead of raw Host.
+- Keep implementation slices issue-sized: each issue should include focused tests for the new behavior and avoid broad rewrites outside its domain.
