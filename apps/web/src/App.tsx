@@ -151,9 +151,14 @@ export function App() {
       >
         <section className="workspace-actions" aria-label="Workspace actions">
           {user.role === 'Organizer' ? (
-            <Link className="button button--primary" to="/events/new">
-              Create event
-            </Link>
+            <>
+              <Link className="button button--primary" to="/organizer/events">
+                Event dashboard
+              </Link>
+              <Link className="button button--primary" to="/events/new">
+                Create event
+              </Link>
+            </>
           ) : null}
           <Link className="button button--primary" to="/profile">
             Profile photo

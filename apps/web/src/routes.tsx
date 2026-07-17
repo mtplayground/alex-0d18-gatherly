@@ -2,6 +2,7 @@ import { createBrowserRouter } from 'react-router-dom';
 import { App } from './App';
 import { EventFormPage } from './pages/EventFormPage';
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
+import { OrganizerDashboardPage } from './pages/OrganizerDashboardPage';
 import { ProfileSettingsPage } from './pages/ProfileSettingsPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { SignInPage } from './pages/SignInPage';
@@ -28,6 +29,10 @@ export const router = createBrowserRouter([
   {
     path: '/events/:eventId/edit',
     element: <EventFormPage />,
+  },
+  {
+    path: '/organizer/events',
+    element: <OrganizerDashboardPage />,
   },
   {
     path: '/reset-password',
