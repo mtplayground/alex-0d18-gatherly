@@ -5,8 +5,8 @@ import { createDatabasePool } from './db/pool';
 async function main() {
   const config = loadConfig();
   const databasePool = createDatabasePool({
-    databaseUrl: config.databaseUrl,
-    maxConnections: config.databaseMaxConnections,
+    databaseUrl: config.database.url,
+    maxConnections: config.database.maxConnections,
   });
   const app = createApp({
     databasePool,

@@ -20,6 +20,13 @@ npm run db:migrate
 Start the API server:
 
 ```bash
-export DATABASE_URL=$(cat /workspace/.database_url)
+set -a
+. /workspace/.env.production
+set +a
 npm run dev:api
 ```
+
+Use `.env.example` as the reference for runtime variables. The API requires database
+and object storage configuration at startup. Auth and email configuration are loaded
+when the platform-provisioned variables are present, and partial configuration fails
+fast.
