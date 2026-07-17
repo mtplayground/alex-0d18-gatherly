@@ -60,3 +60,23 @@ export interface VerifyEmailResponse {
   status: 'verified';
   user: UserProfile;
 }
+
+export type PasswordResetRequestStatus = 'sent' | 'email_not_configured';
+
+export interface PasswordResetRequest {
+  email: string;
+}
+
+export interface PasswordResetRequestResponse {
+  status: PasswordResetRequestStatus;
+  expiresAt: string | null;
+}
+
+export interface PasswordResetConfirmRequest {
+  token: string;
+}
+
+export interface PasswordResetConfirmResponse {
+  status: 'confirmed';
+  loginUrl: string;
+}

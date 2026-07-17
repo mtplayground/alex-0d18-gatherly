@@ -3,6 +3,10 @@ import type { Response } from 'express';
 import type {
   AuthLoginUrlResponse,
   AuthSessionResponse,
+  PasswordResetConfirmRequest,
+  PasswordResetConfirmResponse,
+  PasswordResetRequest,
+  PasswordResetRequestResponse,
   VerificationEmailResponse,
   VerifyEmailRequest,
   VerifyEmailResponse,
@@ -15,6 +19,12 @@ import {
   createEmailVerificationToken,
 } from '../auth/emailVerificationRepository';
 import { sendVerificationEmail } from '../auth/emailVerificationEmail';
+import {
+  consumePasswordResetToken,
+  createPasswordResetToken,
+  findUserByEmail,
+} from '../auth/passwordResetRepository';
+import { sendPasswordResetEmail } from '../auth/passwordResetEmail';
 import { createAuthMiddleware } from '../middleware/authMiddleware';
 import { EmailSendError } from '../email/emailClient';
 import { isUserRole, toUserProfile } from '../users/userModel';
@@ -92,6 +102,19 @@ function redirectToLogin(
   res.redirect(buildLoginUrl(auth, returnTo));
 }
 
+function normalizeEmail(value: unknown): string | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const trimmed = value.trim().toLowerCase();
+  if (!trimmed || !trimmed.includes('@')) {
+    return null;
+  }
+
+  return trimmed;
+}
+
 async function requestVerificationEmail(
   options: CreateAuthRouterOptions,
   user: UserRecord,
@@ -112,6 +135,34 @@ async function requestVerificationEmail(
 
   const token = await createEmailVerificationToken(options.databasePool, user.sub, user.email);
   const status = await sendVerificationEmail(options.email, options.selfUrl, user, token.token);
+
+  return {
+    status,
+    expiresAt: token.expiresAt.toISOString(),
+  };
+}
+
+async function requestPasswordReset(
+  options: CreateAuthRouterOptions,
+  email: string,
+): Promise<PasswordResetRequestResponse> {
+  if (!options.email) {
+    return {
+      status: 'email_not_configured',
+      expiresAt: null,
+    };
+  }
+
+  const user = await findUserByEmail(options.databasePool, email);
+  if (!user) {
+    return {
+      status: 'sent',
+      expiresAt: null,
+    };
+  }
+
+  const token = await createPasswordResetToken(options.databasePool, user);
+  const status = await sendPasswordResetEmail(options.email, options.selfUrl, user, token.token);
 
   return {
     status,
@@ -253,6 +304,80 @@ export function createAuthRouter(options: CreateAuthRouterOptions): Router {
       const responseBody: VerifyEmailResponse = {
         status: 'verified',
         user: toUserProfile(user),
+      };
+
+      res.json(responseBody);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.post('/password-reset/request', async (req, res, next) => {
+    if (!options.auth) {
+      res
+        .status(503)
+        .json({ error: { code: 'auth_not_configured', message: 'Auth is not configured' } });
+      return;
+    }
+
+    try {
+      const body = req.body as Partial<PasswordResetRequest>;
+      const email = normalizeEmail(body.email);
+      if (!email) {
+        res.status(400).json({
+          error: { code: 'invalid_email', message: 'A valid email address is required' },
+        });
+        return;
+      }
+
+      const responseBody = await requestPasswordReset(options, email);
+      res.status(responseBody.status === 'email_not_configured' ? 202 : 200).json(responseBody);
+    } catch (err) {
+      if (err instanceof EmailSendError && err.status === 429) {
+        res.status(429).json({
+          error: {
+            code: 'email_rate_limited',
+            message: 'Password reset email is rate limited. Try again shortly.',
+          },
+        });
+        return;
+      }
+
+      next(err);
+    }
+  });
+
+  router.post('/password-reset/confirm', async (req, res, next) => {
+    if (!options.auth) {
+      res
+        .status(503)
+        .json({ error: { code: 'auth_not_configured', message: 'Auth is not configured' } });
+      return;
+    }
+
+    try {
+      const body = req.body as Partial<PasswordResetConfirmRequest>;
+      if (typeof body.token !== 'string' || body.token.trim().length === 0) {
+        res
+          .status(400)
+          .json({ error: { code: 'invalid_token', message: 'Reset token is required' } });
+        return;
+      }
+
+      const reset = await consumePasswordResetToken(options.databasePool, body.token);
+      if (!reset) {
+        res.status(400).json({
+          error: {
+            code: 'invalid_or_expired_token',
+            message: 'Password reset link is invalid or expired',
+          },
+        });
+        return;
+      }
+
+      const responseBody: PasswordResetConfirmResponse = {
+        status: 'confirmed',
+        loginUrl: buildLoginUrl(options.auth, new URL('/', options.selfUrl).toString()),
       };
 
       res.json(responseBody);

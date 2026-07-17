@@ -69,6 +69,9 @@ export function SignInPage() {
             <a className="button button--secondary" href={googlePath}>
               Continue with Google
             </a>
+            <Link className="auth-fallback" to="/forgot-password">
+              Forgot password?
+            </Link>
             <p className="auth-switch">
               New here? <Link to="/signup">Create an account</Link>
             </p>
