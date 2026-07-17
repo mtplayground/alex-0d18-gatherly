@@ -36,6 +36,7 @@ import {
   findEventById,
   listEvents,
   listEventsByOrganizer,
+  listUpcomingEventsForMember,
   updateEvent,
   type CreateEventInput,
   type UpdateEventInput,
@@ -704,6 +705,28 @@ export function createEventsRouter(options: CreateEventsRouterOptions): Router {
       };
 
       res.status(201).json(body);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.get('/feed', requireAuth, async (req, res, next) => {
+    try {
+      const member = requireMember(req);
+      if (member.error || !member.value) {
+        sendValidationError(
+          res,
+          member.error ?? { code: 'not_authenticated', message: 'Not authenticated' },
+        );
+        return;
+      }
+
+      const events = await listUpcomingEventsForMember(options.databasePool, member.value);
+      const body: EventListResponse = {
+        events: await Promise.all(events.map((event) => toSignedEvent(objectStorage, event))),
+      };
+
+      res.json(body);
     } catch (err) {
       next(err);
     }

@@ -209,3 +209,31 @@ export async function listEventsByOrganizer(
 
   return result.rows.map(mapEventRow);
 }
+
+export async function listUpcomingEventsForMember(
+  pool: Pool,
+  memberSub: string,
+): Promise<EventRecord[]> {
+  const result = await pool.query<EventRow>(
+    `
+      SELECT
+        events.*,
+        users.name AS organizer_name,
+        users.email AS organizer_email,
+        COUNT(event_rsvps.member_sub) FILTER (WHERE event_rsvps.status = 'yes') AS rsvp_count
+      FROM event_invitations
+      JOIN events ON events.id = event_invitations.event_id
+      LEFT JOIN users ON users.sub = events.organizer_sub
+      LEFT JOIN event_rsvps ON event_rsvps.event_id = events.id
+      WHERE event_invitations.invited_user_sub = $1
+        AND event_invitations.revoked_at IS NULL
+        AND events.canceled_at IS NULL
+        AND events.starts_at >= NOW()
+      GROUP BY events.id, users.name, users.email
+      ORDER BY events.starts_at ASC, events.created_at ASC
+    `,
+    [memberSub],
+  );
+
+  return result.rows.map(mapEventRow);
+}
