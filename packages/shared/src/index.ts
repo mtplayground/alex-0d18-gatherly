@@ -15,3 +15,19 @@ export interface HealthResponse {
 }
 
 export type ApiResult<T> = T | ApiErrorResponse;
+
+export const USER_ROLES = ['Organizer', 'Member'] as const;
+
+export type UserRole = (typeof USER_ROLES)[number];
+
+export interface UserProfile {
+  sub: string;
+  email: string;
+  name: string | null;
+  profilePhotoKey: string | null;
+  role: UserRole;
+  emailVerified: boolean;
+  createdAt: string;
+  updatedAt: string;
+  lastSeenAt: string | null;
+}
