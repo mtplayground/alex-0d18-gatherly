@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { Router } from 'express';
 import type { NextFunction, Request, Response } from 'express';
 import multer from 'multer';
+import { RSVP_STATUSES } from '@app/shared';
 import type {
   CreateEventRequest,
   EventListResponse,
@@ -9,7 +10,11 @@ import type {
   InvitationResponse,
   CreateInvitationRequest,
   InvitationEmailStatus,
+  RsvpResponse,
+  RsvpStatus,
+  RsvpStatusResponse,
   UpdateEventRequest,
+  UpdateRsvpRequest,
 } from '@app/shared';
 import type { Pool } from 'pg';
 import type { AuthConfig, EmailConfig, ObjectStorageConfig } from '../config';
@@ -29,8 +34,10 @@ import {
   type UpdateEventInput,
 } from '../events/eventRepository';
 import { buildInvitationEmail } from '../invitations/invitationEmail';
-import { createInvitation } from '../invitations/invitationRepository';
+import { createInvitation, findActiveInvitationForUser } from '../invitations/invitationRepository';
 import { toInvitationProfile, type InvitationRecord } from '../invitations/invitationModel';
+import { findRsvp, upsertRsvp } from '../rsvps/rsvpRepository';
+import { toRsvpProfile } from '../rsvps/rsvpModel';
 import { findActiveUserByEmail } from '../users/userRepository';
 
 export interface CreateEventsRouterOptions {
@@ -326,9 +333,36 @@ function requireOrganizer(req: Request): ValidationResult<string> {
   return { value: user.sub };
 }
 
+function requireMember(req: Request): ValidationResult<string> {
+  const user = req.auth?.user;
+  if (!user) {
+    return {
+      error: {
+        code: 'not_authenticated',
+        message: 'Not authenticated',
+      },
+    };
+  }
+
+  if (user.role !== 'Member') {
+    return {
+      error: {
+        code: 'member_required',
+        message: 'Only Members can RSVP to events',
+      },
+    };
+  }
+
+  return { value: user.sub };
+}
+
 function sendValidationError(res: Response, error: { code: string; message: string }) {
   const status =
-    error.code === 'organizer_required' || error.code === 'event_forbidden' ? 403 : 400;
+    error.code === 'organizer_required' ||
+    error.code === 'member_required' ||
+    error.code === 'event_forbidden'
+      ? 403
+      : 400;
   res.status(status).json({ error });
 }
 
@@ -416,6 +450,37 @@ function parseInvitationBody(body: unknown): ValidationResult<string> {
   }
 
   return { value: email.value.toLowerCase() };
+}
+
+function parseRsvpBody(body: unknown): ValidationResult<RsvpStatus> {
+  if (!isObject(body)) {
+    return {
+      error: {
+        code: 'invalid_rsvp',
+        message: 'RSVP payload must be an object',
+      },
+    };
+  }
+
+  if (typeof body.status !== 'string' || !RSVP_STATUSES.includes(body.status as RsvpStatus)) {
+    return {
+      error: {
+        code: 'invalid_rsvp',
+        message: 'status must be yes, no, or maybe',
+      },
+    };
+  }
+
+  return { value: body.status as RsvpStatus };
+}
+
+async function ensureInvitedMember(
+  pool: Pool,
+  eventId: string,
+  memberSub: string,
+): Promise<boolean> {
+  const invitation = await findActiveInvitationForUser(pool, eventId, memberSub);
+  return Boolean(invitation);
 }
 
 function eventUrl(selfUrl: string, eventId: string): string {
@@ -746,6 +811,96 @@ export function createEventsRouter(options: CreateEventsRouterOptions): Router {
       };
 
       res.status(201).json(body);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.get('/:eventId/rsvp', requireAuth, async (req, res, next) => {
+    try {
+      const member = requireMember(req);
+      if (member.error || !member.value) {
+        sendValidationError(
+          res,
+          member.error ?? { code: 'not_authenticated', message: 'Not authenticated' },
+        );
+        return;
+      }
+
+      const eventId = requireEventId(req);
+      const event = await findEventById(options.databasePool, eventId);
+      if (!event) {
+        res.status(404).json({ error: { code: 'event_not_found', message: 'Event not found' } });
+        return;
+      }
+
+      const isInvited = await ensureInvitedMember(options.databasePool, event.id, member.value);
+      if (!isInvited) {
+        res.status(403).json({
+          error: { code: 'invitation_required', message: 'An active invitation is required' },
+        });
+        return;
+      }
+
+      const rsvp = await findRsvp(options.databasePool, event.id, member.value);
+      const body: RsvpStatusResponse = {
+        rsvp: rsvp ? toRsvpProfile(rsvp) : null,
+      };
+
+      res.json(body);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.put('/:eventId/rsvp', requireAuth, async (req, res, next) => {
+    try {
+      const member = requireMember(req);
+      if (member.error || !member.value) {
+        sendValidationError(
+          res,
+          member.error ?? { code: 'not_authenticated', message: 'Not authenticated' },
+        );
+        return;
+      }
+
+      const eventId = requireEventId(req);
+      const event = await findEventById(options.databasePool, eventId);
+      if (!event) {
+        res.status(404).json({ error: { code: 'event_not_found', message: 'Event not found' } });
+        return;
+      }
+
+      const isInvited = await ensureInvitedMember(options.databasePool, event.id, member.value);
+      if (!isInvited) {
+        res.status(403).json({
+          error: { code: 'invitation_required', message: 'An active invitation is required' },
+        });
+        return;
+      }
+
+      const parsed = parseRsvpBody(req.body as UpdateRsvpRequest);
+      if (parsed.error || !parsed.value) {
+        sendValidationError(res, parsed.error ?? { code: 'invalid_rsvp', message: 'Invalid RSVP' });
+        return;
+      }
+
+      const rsvp = await upsertRsvp(options.databasePool, {
+        eventId: event.id,
+        memberSub: member.value,
+        status: parsed.value,
+      });
+      const updatedEvent = await findEventById(options.databasePool, event.id);
+      if (!updatedEvent) {
+        res.status(404).json({ error: { code: 'event_not_found', message: 'Event not found' } });
+        return;
+      }
+      const body: RsvpResponse = {
+        rsvp: toRsvpProfile(rsvp),
+        event: await toSignedEvent(objectStorage, updatedEvent),
+      };
+
+      res.json(body);
     } catch (err) {
       next(err);
     }

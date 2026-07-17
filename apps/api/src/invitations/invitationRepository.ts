@@ -78,3 +78,24 @@ export async function listInvitationsByEvent(
 
   return result.rows.map(mapInvitationRow);
 }
+
+export async function findActiveInvitationForUser(
+  pool: Pool,
+  eventId: string,
+  invitedUserSub: string,
+): Promise<InvitationRecord | null> {
+  const result = await pool.query<InvitationRow>(
+    `
+      SELECT ${invitationSelect}
+      FROM event_invitations
+      ${invitationJoins}
+      WHERE event_invitations.event_id = $1
+        AND event_invitations.invited_user_sub = $2
+        AND event_invitations.revoked_at IS NULL
+    `,
+    [eventId, invitedUserSub],
+  );
+
+  const row = result.rows[0];
+  return row ? mapInvitationRow(row) : null;
+}

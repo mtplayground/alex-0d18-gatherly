@@ -170,7 +170,9 @@ export function OrganizerDashboardPage() {
                   </p>
                   <h2>{event.title}</h2>
                 </div>
-                <p>{event.location}</p>
+                <p>
+                  {event.location} · {event.rsvpCount} yes
+                </p>
               </div>
               <div className="organizer-event-row__actions">
                 <Link className="button button--secondary" to={`/events/${event.id}/edit`}>

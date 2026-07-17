@@ -1,8 +1,17 @@
-import type { EventProfile, EventResponse, InvitationResponse } from '@app/shared';
+import type {
+  EventProfile,
+  EventResponse,
+  InvitationResponse,
+  RsvpResponse,
+  RsvpStatus,
+  RsvpStatusResponse,
+} from '@app/shared';
 import type { FormEvent } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
+import { RsvpButtons } from '../components/RsvpButtons';
+import { ApiRequestError } from '../lib/api';
 import { apiRequest } from '../lib/api';
 
 function formatEventDate(value: string) {
@@ -49,6 +58,9 @@ export function EventDetailPage() {
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteStatus, setInviteStatus] = useState<'idle' | 'sending'>('idle');
   const [inviteMessage, setInviteMessage] = useState<string | null>(null);
+  const [rsvpStatus, setRsvpStatus] = useState<RsvpStatus | null>(null);
+  const [rsvpMessage, setRsvpMessage] = useState<string | null>(null);
+  const [isSavingRsvp, setIsSavingRsvp] = useState(false);
 
   useEffect(() => {
     if (!eventId) {
@@ -84,10 +96,74 @@ export function EventDetailPage() {
     };
   }, [eventId]);
 
+  useEffect(() => {
+    if (authStatus !== 'authenticated' || user?.role !== 'Member' || !eventId) {
+      setRsvpStatus(null);
+      return;
+    }
+
+    let isCurrent = true;
+    setRsvpMessage(null);
+
+    apiRequest<RsvpStatusResponse>(`/api/events/${eventId}/rsvp`)
+      .then((response) => {
+        if (!isCurrent) {
+          return;
+        }
+
+        setRsvpStatus(response.rsvp?.status ?? null);
+      })
+      .catch((err: unknown) => {
+        if (!isCurrent) {
+          return;
+        }
+
+        if (err instanceof ApiRequestError && err.status === 403) {
+          setRsvpMessage('You need an invitation before you can RSVP.');
+          return;
+        }
+
+        setRsvpMessage(err instanceof Error ? err.message : 'Unable to load your RSVP.');
+      });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [authStatus, eventId, user?.role]);
+
   const formattedDate = useMemo(() => (event ? formatEventDate(event.startsAt) : null), [event]);
   const canInvite =
     authStatus === 'authenticated' &&
     Boolean(user && event && user.role === 'Organizer' && user.sub === event.organizerSub);
+  const canRsvp = authStatus === 'authenticated' && user?.role === 'Member';
+
+  async function handleRsvpChange(nextStatus: RsvpStatus) {
+    if (!event) {
+      return;
+    }
+
+    setIsSavingRsvp(true);
+    setRsvpMessage(null);
+
+    try {
+      const response = await apiRequest<RsvpResponse>(`/api/events/${event.id}/rsvp`, {
+        method: 'PUT',
+        body: JSON.stringify({ status: nextStatus }),
+      });
+
+      setRsvpStatus(response.rsvp.status);
+      setEvent(response.event);
+      setRsvpMessage(`RSVP saved as ${response.rsvp.status}.`);
+    } catch (err) {
+      if (err instanceof ApiRequestError && err.status === 403) {
+        setRsvpMessage('You need an invitation before you can RSVP.');
+      } else {
+        setRsvpMessage(err instanceof Error ? err.message : 'Unable to save your RSVP.');
+      }
+    } finally {
+      setIsSavingRsvp(false);
+    }
+  }
 
   async function handleInviteSubmit(submitEvent: FormEvent<HTMLFormElement>) {
     submitEvent.preventDefault();
@@ -182,14 +258,30 @@ export function EventDetailPage() {
 
         {event.description ? <p className="event-detail-description">{event.description}</p> : null}
 
-        <div className="workspace-actions">
-          <Link className="button button--primary" to="/signin">
-            RSVP
-          </Link>
-          <Link className="button button--secondary" to="/">
-            Workspace
-          </Link>
-        </div>
+        {canRsvp ? (
+          <section className="event-rsvp-panel" aria-label="RSVP">
+            <p className="photo-card__eyebrow">Your RSVP</p>
+            <RsvpButtons
+              isSaving={isSavingRsvp}
+              onChange={(nextStatus) => void handleRsvpChange(nextStatus)}
+              value={rsvpStatus}
+            />
+            {rsvpMessage ? (
+              <div className="inline-alert" role="status">
+                {rsvpMessage}
+              </div>
+            ) : null}
+          </section>
+        ) : (
+          <div className="workspace-actions">
+            <Link className="button button--primary" to="/signin">
+              RSVP
+            </Link>
+            <Link className="button button--secondary" to="/">
+              Workspace
+            </Link>
+          </div>
+        )}
 
         {canInvite ? (
           <form
