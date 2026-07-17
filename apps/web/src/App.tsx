@@ -3,6 +3,7 @@ import { useAuth } from './auth/AuthContext';
 import { platformAuthPath } from './auth/redirects';
 import { AppShell } from './components/ui/AppShell';
 import { PhotoCard } from './components/ui/PhotoCard';
+import { EventFeedPage } from './pages/EventFeedPage';
 import { useState } from 'react';
 
 const highlightedPlans = [
@@ -126,6 +127,10 @@ export function App() {
           </section>
         </AppShell>
       );
+    }
+
+    if (user.role === 'Member') {
+      return <EventFeedPage />;
     }
 
     return (

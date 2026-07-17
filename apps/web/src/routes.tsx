@@ -1,6 +1,7 @@
 import { createBrowserRouter } from 'react-router-dom';
 import { App } from './App';
 import { EventDetailPage } from './pages/EventDetailPage';
+import { EventFeedPage } from './pages/EventFeedPage';
 import { EventFormPage } from './pages/EventFormPage';
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
 import { OrganizerDashboardPage } from './pages/OrganizerDashboardPage';
@@ -26,6 +27,10 @@ export const router = createBrowserRouter([
   {
     path: '/events/new',
     element: <EventFormPage />,
+  },
+  {
+    path: '/feed',
+    element: <EventFeedPage />,
   },
   {
     path: '/events/:eventId',
