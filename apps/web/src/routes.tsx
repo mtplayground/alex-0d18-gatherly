@@ -26,6 +26,10 @@ export const router = createBrowserRouter([
     element: <EventFormPage />,
   },
   {
+    path: '/events/:eventId/edit',
+    element: <EventFormPage />,
+  },
+  {
     path: '/reset-password',
     element: <ResetPasswordPage />,
   },
