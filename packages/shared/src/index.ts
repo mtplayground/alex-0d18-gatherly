@@ -50,6 +50,20 @@ export interface ProfilePhotoUploadResponse {
   user: UserProfile;
 }
 
+export interface EventProfile {
+  id: string;
+  organizerSub: string;
+  title: string;
+  description: string | null;
+  startsAt: string;
+  location: string;
+  coverPhotoKey: string | null;
+  coverPhotoUrl: string | null;
+  createdAt: string;
+  updatedAt: string;
+  canceledAt: string | null;
+}
+
 export type VerificationEmailStatus = 'sent' | 'already_verified' | 'email_not_configured';
 
 export interface VerificationEmailResponse {
