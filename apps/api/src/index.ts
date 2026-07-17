@@ -10,6 +10,7 @@ async function main() {
   });
   const app = createApp({
     databasePool,
+    objectStorage: config.objectStorage,
     selfUrl: config.selfUrl,
     ...(config.auth ? { auth: config.auth } : {}),
     ...(config.email ? { email: config.email } : {}),

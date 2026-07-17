@@ -56,6 +56,7 @@ export function toUserProfile(user: UserRecord): UserProfile {
     email: user.email,
     name: user.name,
     profilePhotoKey: user.profilePhotoKey,
+    profilePhotoUrl: null,
     role: user.role,
     emailVerified: user.emailVerified,
     createdAt: user.createdAt.toISOString(),

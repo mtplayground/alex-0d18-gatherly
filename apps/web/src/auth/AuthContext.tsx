@@ -4,6 +4,7 @@ import type {
   PasswordResetConfirmResponse,
   PasswordResetRequest,
   PasswordResetRequestResponse,
+  ProfilePhotoUploadResponse,
   UpdateCurrentUserRequest,
   UserProfile,
   UserRole,
@@ -34,6 +35,7 @@ export interface AuthContextValue {
   requestPasswordReset: (email: string) => Promise<PasswordResetRequestResponse>;
   requestVerificationEmail: () => Promise<VerificationEmailResponse>;
   updateRole: (role: UserRole) => Promise<UserProfile>;
+  uploadProfilePhoto: (file: File) => Promise<UserProfile>;
   verifyEmail: (token: string) => Promise<UserProfile>;
 }
 
@@ -111,6 +113,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const uploadProfilePhoto = useCallback(async (file: File) => {
+    const formData = new FormData();
+    formData.set('photo', file);
+    const response = await apiRequest<ProfilePhotoUploadResponse>('/api/auth/me/profile-photo', {
+      method: 'POST',
+      body: formData,
+    });
+
+    setUser(response.user);
+    setStatus('authenticated');
+    setError(null);
+
+    return response.user;
+  }, []);
+
   const verifyEmail = useCallback(
     async (token: string) => {
       const payload: VerifyEmailRequest = { token };
@@ -141,6 +158,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       requestPasswordReset,
       requestVerificationEmail,
       updateRole,
+      uploadProfilePhoto,
       verifyEmail,
     }),
     [
@@ -152,6 +170,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       requestVerificationEmail,
       status,
       updateRole,
+      uploadProfilePhoto,
       user,
       verifyEmail,
     ],

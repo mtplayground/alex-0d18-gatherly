@@ -1,5 +1,7 @@
+import { randomUUID } from 'node:crypto';
 import { Router } from 'express';
-import type { Response } from 'express';
+import type { NextFunction, Request, Response } from 'express';
+import multer from 'multer';
 import type {
   AuthLoginUrlResponse,
   AuthSessionResponse,
@@ -7,13 +9,14 @@ import type {
   PasswordResetConfirmResponse,
   PasswordResetRequest,
   PasswordResetRequestResponse,
+  ProfilePhotoUploadResponse,
   VerificationEmailResponse,
   VerifyEmailRequest,
   VerifyEmailResponse,
   UpdateCurrentUserRequest,
 } from '@app/shared';
 import type { Pool } from 'pg';
-import type { AuthConfig, EmailConfig } from '../config';
+import type { AuthConfig, EmailConfig, ObjectStorageConfig } from '../config';
 import {
   consumeEmailVerificationToken,
   createEmailVerificationToken,
@@ -27,16 +30,37 @@ import {
 import { sendPasswordResetEmail } from '../auth/passwordResetEmail';
 import { createAuthMiddleware } from '../middleware/authMiddleware';
 import { EmailSendError } from '../email/emailClient';
+import { createObjectStorage, type ObjectStorage } from '../storage/objectStorage';
 import { isUserRole, toUserProfile } from '../users/userModel';
 import type { UserRecord } from '../users/userModel';
-import { updateAuthenticatedUserRole } from '../users/userRepository';
+import {
+  updateAuthenticatedUserProfilePhoto,
+  updateAuthenticatedUserRole,
+} from '../users/userRepository';
 
 export interface CreateAuthRouterOptions {
   auth?: AuthConfig;
   databasePool: Pool;
   email?: EmailConfig;
+  objectStorage: ObjectStorageConfig;
   selfUrl: string;
 }
+
+const allowedProfilePhotoTypes = new Map([
+  ['image/jpeg', 'jpg'],
+  ['image/png', 'png'],
+  ['image/webp', 'webp'],
+]);
+const maxProfilePhotoBytes = 5 * 1024 * 1024;
+
+const profilePhotoUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: maxProfilePhotoBytes,
+    files: 1,
+  },
+});
+const profilePhotoUploadSingle = profilePhotoUpload.single('photo');
 
 function firstQueryValue(value: unknown): string | undefined {
   if (typeof value === 'string') {
@@ -115,6 +139,52 @@ function normalizeEmail(value: unknown): string | null {
   return trimmed;
 }
 
+function toSafeObjectSegment(value: string): string {
+  return value.replace(/[^a-zA-Z0-9_-]/g, '_');
+}
+
+function buildProfilePhotoKey(sub: string, contentType: string): string {
+  const extension = allowedProfilePhotoTypes.get(contentType);
+  if (!extension) {
+    throw new Error(`Unsupported profile photo content type: ${contentType}`);
+  }
+
+  return `avatars/${toSafeObjectSegment(sub)}/${Date.now()}-${randomUUID()}.${extension}`;
+}
+
+function handleProfilePhotoUpload(req: Request, res: Response, next: NextFunction) {
+  profilePhotoUploadSingle(req, res, (err: unknown) => {
+    if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
+      res.status(400).json({
+        error: {
+          code: 'photo_too_large',
+          message: 'Profile photo must be 5 MB or smaller',
+        },
+      });
+      return;
+    }
+
+    if (err) {
+      next(err);
+      return;
+    }
+
+    next();
+  });
+}
+
+async function toSignedUserProfile(storage: ObjectStorage, user: UserRecord) {
+  const profile = toUserProfile(user);
+  if (!user.profilePhotoKey) {
+    return profile;
+  }
+
+  return {
+    ...profile,
+    profilePhotoUrl: await storage.getSignedReadUrl(user.profilePhotoKey),
+  };
+}
+
 async function requestVerificationEmail(
   options: CreateAuthRouterOptions,
   user: UserRecord,
@@ -172,6 +242,7 @@ async function requestPasswordReset(
 
 export function createAuthRouter(options: CreateAuthRouterOptions): Router {
   const router = Router();
+  const objectStorage = createObjectStorage(options.objectStorage);
   const { requireAuth } = createAuthMiddleware({
     databasePool: options.databasePool,
     ...(options.auth ? { auth: options.auth } : {}),
@@ -246,7 +317,7 @@ export function createAuthRouter(options: CreateAuthRouterOptions): Router {
       }
 
       const body: AuthSessionResponse = {
-        user: toUserProfile(req.auth.user),
+        user: await toSignedUserProfile(objectStorage, req.auth.user),
         registration: req.auth.registration,
       };
 
@@ -303,7 +374,7 @@ export function createAuthRouter(options: CreateAuthRouterOptions): Router {
 
       const responseBody: VerifyEmailResponse = {
         status: 'verified',
-        user: toUserProfile(user),
+        user: await toSignedUserProfile(objectStorage, user),
       };
 
       res.json(responseBody);
@@ -407,7 +478,7 @@ export function createAuthRouter(options: CreateAuthRouterOptions): Router {
         body.role,
       );
       const responseBody: AuthSessionResponse = {
-        user: toUserProfile(user),
+        user: await toSignedUserProfile(objectStorage, user),
         registration: req.auth.registration,
       };
 
@@ -416,6 +487,57 @@ export function createAuthRouter(options: CreateAuthRouterOptions): Router {
       next(err);
     }
   });
+
+  router.post(
+    '/me/profile-photo',
+    requireAuth,
+    handleProfilePhotoUpload,
+    async (req, res, next) => {
+      try {
+        if (!req.auth) {
+          next(new Error('Authenticated route missing auth context'));
+          return;
+        }
+
+        const file = req.file;
+        if (!file) {
+          res
+            .status(400)
+            .json({ error: { code: 'missing_photo', message: 'Profile photo is required' } });
+          return;
+        }
+
+        if (!allowedProfilePhotoTypes.has(file.mimetype)) {
+          res.status(400).json({
+            error: {
+              code: 'unsupported_photo_type',
+              message: 'Profile photo must be a JPEG, PNG, or WebP image',
+            },
+          });
+          return;
+        }
+
+        const relativeKey = buildProfilePhotoKey(req.auth.claims.sub, file.mimetype);
+        const profilePhotoKey = await objectStorage.uploadBuffer({
+          relativeKey,
+          contentType: file.mimetype,
+          body: file.buffer,
+        });
+        const user = await updateAuthenticatedUserProfilePhoto(
+          options.databasePool,
+          req.auth.claims.sub,
+          profilePhotoKey,
+        );
+        const responseBody: ProfilePhotoUploadResponse = {
+          user: await toSignedUserProfile(objectStorage, user),
+        };
+
+        res.json(responseBody);
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
 
   return router;
 }

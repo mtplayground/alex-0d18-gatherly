@@ -85,3 +85,29 @@ export async function updateAuthenticatedUserRole(
 
   return mapUserRow(row);
 }
+
+export async function updateAuthenticatedUserProfilePhoto(
+  pool: Pool,
+  sub: string,
+  profilePhotoKey: string,
+): Promise<UserRecord> {
+  const result = await pool.query<UserRow>(
+    `
+      UPDATE users
+      SET
+        profile_photo_key = $2,
+        updated_at = NOW()
+      WHERE sub = $1
+        AND disabled_at IS NULL
+      RETURNING *
+    `,
+    [sub, profilePhotoKey],
+  );
+
+  const row = result.rows[0];
+  if (!row) {
+    throw new Error('Authenticated user was not found for profile photo update');
+  }
+
+  return mapUserRow(row);
+}

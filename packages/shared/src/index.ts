@@ -25,6 +25,7 @@ export interface UserProfile {
   email: string;
   name: string | null;
   profilePhotoKey: string | null;
+  profilePhotoUrl: string | null;
   role: UserRole;
   emailVerified: boolean;
   createdAt: string;
@@ -43,6 +44,10 @@ export interface AuthSessionResponse {
 
 export interface UpdateCurrentUserRequest {
   role: UserRole;
+}
+
+export interface ProfilePhotoUploadResponse {
+  user: UserProfile;
 }
 
 export type VerificationEmailStatus = 'sent' | 'already_verified' | 'email_not_configured';
