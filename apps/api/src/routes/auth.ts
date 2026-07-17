@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import type { Response } from 'express';
 import type { AuthLoginUrlResponse, AuthSessionResponse } from '@app/shared';
 import type { Pool } from 'pg';
 import type { AuthConfig } from '../config';
@@ -52,6 +53,30 @@ function buildLoginUrl(auth: AuthConfig, returnTo: string): string {
   return loginUrl.toString();
 }
 
+function sendLoginUrlResponse(
+  auth: AuthConfig,
+  selfUrl: string,
+  rawReturnTo: string | undefined,
+  res: Response,
+) {
+  const returnTo = resolveReturnTo(selfUrl, rawReturnTo);
+  const body: AuthLoginUrlResponse = {
+    loginUrl: buildLoginUrl(auth, returnTo),
+  };
+
+  res.json(body);
+}
+
+function redirectToLogin(
+  auth: AuthConfig,
+  selfUrl: string,
+  rawReturnTo: string | undefined,
+  res: Response,
+) {
+  const returnTo = resolveReturnTo(selfUrl, rawReturnTo);
+  res.redirect(buildLoginUrl(auth, returnTo));
+}
+
 export function createAuthRouter(options: CreateAuthRouterOptions): Router {
   const router = Router();
   const verifySession = options.auth ? createSessionVerifier(options.auth) : undefined;
@@ -64,12 +89,18 @@ export function createAuthRouter(options: CreateAuthRouterOptions): Router {
       return;
     }
 
-    const returnTo = resolveReturnTo(options.selfUrl, firstQueryValue(req.query.return_to));
-    const body: AuthLoginUrlResponse = {
-      loginUrl: buildLoginUrl(options.auth, returnTo),
-    };
+    sendLoginUrlResponse(options.auth, options.selfUrl, firstQueryValue(req.query.return_to), res);
+  });
 
-    res.json(body);
+  router.get('/google-url', (req, res) => {
+    if (!options.auth) {
+      res
+        .status(503)
+        .json({ error: { code: 'auth_not_configured', message: 'Auth is not configured' } });
+      return;
+    }
+
+    sendLoginUrlResponse(options.auth, options.selfUrl, firstQueryValue(req.query.return_to), res);
   });
 
   router.get('/login', (req, res) => {
@@ -80,8 +111,7 @@ export function createAuthRouter(options: CreateAuthRouterOptions): Router {
       return;
     }
 
-    const returnTo = resolveReturnTo(options.selfUrl, firstQueryValue(req.query.return_to));
-    res.redirect(buildLoginUrl(options.auth, returnTo));
+    redirectToLogin(options.auth, options.selfUrl, firstQueryValue(req.query.return_to), res);
   });
 
   router.get('/register', (req, res) => {
@@ -92,8 +122,18 @@ export function createAuthRouter(options: CreateAuthRouterOptions): Router {
       return;
     }
 
-    const returnTo = resolveReturnTo(options.selfUrl, firstQueryValue(req.query.return_to));
-    res.redirect(buildLoginUrl(options.auth, returnTo));
+    redirectToLogin(options.auth, options.selfUrl, firstQueryValue(req.query.return_to), res);
+  });
+
+  router.get('/google', (req, res) => {
+    if (!options.auth) {
+      res
+        .status(503)
+        .json({ error: { code: 'auth_not_configured', message: 'Auth is not configured' } });
+      return;
+    }
+
+    redirectToLogin(options.auth, options.selfUrl, firstQueryValue(req.query.return_to), res);
   });
 
   router.get('/me', async (req, res, next) => {
