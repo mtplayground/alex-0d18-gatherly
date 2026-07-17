@@ -64,6 +64,30 @@ export interface EventProfile {
   canceledAt: string | null;
 }
 
+export interface EventResponse {
+  event: EventProfile;
+}
+
+export interface EventListResponse {
+  events: EventProfile[];
+}
+
+export interface CreateEventRequest {
+  title: string;
+  description?: string | null;
+  startsAt: string;
+  location: string;
+  coverPhotoKey?: string | null;
+}
+
+export interface UpdateEventRequest {
+  title?: string;
+  description?: string | null;
+  startsAt?: string;
+  location?: string;
+  coverPhotoKey?: string | null;
+}
+
 export type VerificationEmailStatus = 'sent' | 'already_verified' | 'email_not_configured';
 
 export interface VerificationEmailResponse {

@@ -7,6 +7,7 @@ import path from 'node:path';
 import type { Pool } from 'pg';
 import type { AuthConfig, EmailConfig, ObjectStorageConfig } from './config';
 import { createAuthRouter } from './routes/auth';
+import { createEventsRouter } from './routes/events';
 import { createHealthRouter } from './routes/health';
 import { errorHandler } from './middleware/errorHandler';
 
@@ -43,6 +44,14 @@ export function createApp(options: CreateAppOptions) {
       selfUrl: options.selfUrl,
       ...(options.auth ? { auth: options.auth } : {}),
       ...(options.email ? { email: options.email } : {}),
+    }),
+  );
+  app.use(
+    '/api/events',
+    createEventsRouter({
+      databasePool: options.databasePool,
+      objectStorage: options.objectStorage,
+      ...(options.auth ? { auth: options.auth } : {}),
     }),
   );
   app.use('/api/health', createHealthRouter(options.databasePool));
