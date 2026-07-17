@@ -15,6 +15,7 @@
     "db:rollback": "npm run db:rollback --workspace @app/api",
     "format": "prettier --check .",
     "format:write": "prettier --write .",
+    "test:e2e": "tsx --test tests/e2e/*.test.ts",
     "lint": "eslint .",
     "typecheck": "npm run typecheck --workspace @app/shared && npm run typecheck --workspace @app/api && npm run typecheck --workspace @app/web"
   },
