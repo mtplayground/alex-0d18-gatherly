@@ -24,6 +24,14 @@ export const RSVP_STATUSES = ['yes', 'no', 'maybe'] as const;
 
 export type RsvpStatus = (typeof RSVP_STATUSES)[number];
 
+export const EVENT_ACTIVITY_ACTIONS = [
+  'event_created',
+  'rsvp_submitted',
+  'comment_created',
+] as const;
+
+export type EventActivityAction = (typeof EVENT_ACTIVITY_ACTIONS)[number];
+
 export interface UserProfile {
   sub: string;
   email: string;
@@ -127,6 +135,31 @@ export interface UpdateRsvpRequest {
 export interface RsvpResponse {
   rsvp: RsvpProfile;
   event: EventProfile;
+}
+
+export interface CommentProfile {
+  id: string;
+  eventId: string;
+  authorSub: string;
+  authorName: string | null;
+  authorEmail: string | null;
+  body: string;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt: string | null;
+}
+
+export interface ActivityLogProfile {
+  id: string;
+  eventId: string;
+  actorSub: string | null;
+  actorName: string | null;
+  actorEmail: string | null;
+  action: EventActivityAction;
+  commentId: string | null;
+  rsvpStatus: RsvpStatus | null;
+  metadata: Record<string, unknown>;
+  createdAt: string;
 }
 
 export interface CreateEventRequest {
