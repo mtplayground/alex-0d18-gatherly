@@ -11,6 +11,8 @@
     "dev": "npm run dev --workspace @app/api",
     "dev:api": "npm run dev --workspace @app/api",
     "dev:web": "npm run dev --workspace @app/web",
+    "db:migrate": "npm run db:migrate --workspace @app/api",
+    "db:rollback": "npm run db:rollback --workspace @app/api",
     "format": "prettier --check .",
     "format:write": "prettier --write .",
     "lint": "eslint .",

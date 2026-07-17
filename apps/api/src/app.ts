@@ -3,10 +3,12 @@ import express from 'express';
 import helmet from 'helmet';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
-import { healthRouter } from './routes/health';
+import type { Pool } from 'pg';
+import { createHealthRouter } from './routes/health';
 import { errorHandler } from './middleware/errorHandler';
 
 export interface CreateAppOptions {
+  databasePool: Pool;
   clientDistDir?: string;
 }
 
@@ -14,7 +16,7 @@ function resolveClientDistDir(configuredDir: string | undefined): string {
   return configuredDir ?? path.resolve(__dirname, '../../web/dist');
 }
 
-export function createApp(options: CreateAppOptions = {}) {
+export function createApp(options: CreateAppOptions) {
   const app = express();
   const clientDistDir = resolveClientDistDir(options.clientDistDir);
 
@@ -25,7 +27,7 @@ export function createApp(options: CreateAppOptions = {}) {
   app.use(compression());
   app.use(express.json({ limit: '1mb' }));
 
-  app.use('/api/health', healthRouter);
+  app.use('/api/health', createHealthRouter(options.databasePool));
 
   if (existsSync(clientDistDir)) {
     app.use(express.static(clientDistDir, { index: false }));

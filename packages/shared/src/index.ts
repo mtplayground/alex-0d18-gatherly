@@ -8,6 +8,9 @@ export interface ApiErrorResponse {
 export interface HealthResponse {
   status: 'ok';
   service: 'api';
+  database: {
+    status: 'ok';
+  };
   timestamp: string;
 }
 
