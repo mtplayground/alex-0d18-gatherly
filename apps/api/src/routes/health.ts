@@ -1,14 +1,28 @@
 import { Router } from 'express';
 import type { HealthResponse } from '@app/shared';
+import type { Pool } from 'pg';
 
-export const healthRouter = Router();
+export function createHealthRouter(pool: Pool): Router {
+  const healthRouter = Router();
 
-healthRouter.get('/', (_req, res) => {
-  const body: HealthResponse = {
-    status: 'ok',
-    service: 'api',
-    timestamp: new Date().toISOString(),
-  };
+  healthRouter.get('/', async (_req, res, next) => {
+    try {
+      await pool.query('select 1');
 
-  res.json(body);
-});
+      const body: HealthResponse = {
+        status: 'ok',
+        service: 'api',
+        database: {
+          status: 'ok',
+        },
+        timestamp: new Date().toISOString(),
+      };
+
+      res.json(body);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  return healthRouter;
+}

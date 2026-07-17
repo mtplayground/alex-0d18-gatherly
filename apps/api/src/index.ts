@@ -1,9 +1,17 @@
 import { createApp } from './app';
 import { loadConfig } from './config';
+import { createDatabasePool } from './db/pool';
 
 async function main() {
   const config = loadConfig();
-  const app = createApp(config.clientDistDir ? { clientDistDir: config.clientDistDir } : undefined);
+  const databasePool = createDatabasePool({
+    databaseUrl: config.databaseUrl,
+    maxConnections: config.databaseMaxConnections,
+  });
+  const app = createApp({
+    databasePool,
+    ...(config.clientDistDir ? { clientDistDir: config.clientDistDir } : {}),
+  });
 
   const server = app.listen(config.port, config.host, () => {
     console.log(`API listening on http://${config.host}:${config.port}`);
@@ -16,7 +24,16 @@ async function main() {
         console.error('Error while closing server', err);
         process.exitCode = 1;
       }
-      process.exit();
+
+      databasePool
+        .end()
+        .catch((poolErr: unknown) => {
+          console.error('Error while closing database pool', poolErr);
+          process.exitCode = 1;
+        })
+        .finally(() => {
+          process.exit();
+        });
     });
   };
 
