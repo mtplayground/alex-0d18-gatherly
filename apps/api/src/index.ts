@@ -10,6 +10,8 @@ async function main() {
   });
   const app = createApp({
     databasePool,
+    selfUrl: config.selfUrl,
+    ...(config.auth ? { auth: config.auth } : {}),
     ...(config.clientDistDir ? { clientDistDir: config.clientDistDir } : {}),
   });
 

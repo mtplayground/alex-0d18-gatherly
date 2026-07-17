@@ -31,3 +31,12 @@ export interface UserProfile {
   updatedAt: string;
   lastSeenAt: string | null;
 }
+
+export interface AuthLoginUrlResponse {
+  loginUrl: string;
+}
+
+export interface AuthSessionResponse {
+  user: UserProfile;
+  registration: 'created' | 'returning';
+}
