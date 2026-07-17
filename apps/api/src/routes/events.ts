@@ -5,9 +5,12 @@ import multer from 'multer';
 import { RSVP_STATUSES } from '@app/shared';
 import type {
   CreateEventRequest,
+  CommentListResponse,
+  CommentResponse,
   EventListResponse,
   EventResponse,
   InvitationResponse,
+  CreateCommentRequest,
   CreateInvitationRequest,
   InvitationEmailStatus,
   RsvpResponse,
@@ -18,10 +21,13 @@ import type {
 } from '@app/shared';
 import type { Pool } from 'pg';
 import type { AuthConfig, EmailConfig, ObjectStorageConfig } from '../config';
+import type { UserRecord } from '../users/userModel';
 import { EmailSendError, sendEmail } from '../email/emailClient';
 import { createAuthMiddleware } from '../middleware/authMiddleware';
 import type { ObjectStorage } from '../storage/objectStorage';
 import { createObjectStorage } from '../storage/objectStorage';
+import { createComment, listCommentsByEvent } from '../comments/commentRepository';
+import { toCommentProfile, type CommentRecord } from '../comments/commentModel';
 import { toEventProfile, type EventRecord } from '../events/eventModel';
 import {
   createEvent,
@@ -63,6 +69,7 @@ const allowedCoverPhotoTypes = new Map([
   ['image/webp', 'webp'],
 ]);
 const maxCoverPhotoBytes = 8 * 1024 * 1024;
+const maxCommentBodyLength = 2_000;
 
 const coverPhotoUpload = multer({
   storage: multer.memoryStorage(),
@@ -357,6 +364,20 @@ function requireMember(req: Request): ValidationResult<string> {
   return { value: user.sub };
 }
 
+function requireAuthenticatedUser(req: Request): ValidationResult<UserRecord> {
+  const user = req.auth?.user;
+  if (!user) {
+    return {
+      error: {
+        code: 'not_authenticated',
+        message: 'Not authenticated',
+      },
+    };
+  }
+
+  return { value: user };
+}
+
 function sendValidationError(res: Response, error: { code: string; message: string }) {
   const status =
     error.code === 'organizer_required' ||
@@ -418,6 +439,18 @@ async function toSignedEvent(storage: ObjectStorage, event: EventRecord) {
   };
 }
 
+async function toSignedComment(storage: ObjectStorage, comment: CommentRecord) {
+  const profile = toCommentProfile(comment);
+  if (!comment.authorProfilePhotoKey) {
+    return profile;
+  }
+
+  return {
+    ...profile,
+    authorProfilePhotoUrl: await storage.getSignedReadUrl(comment.authorProfilePhotoKey),
+  };
+}
+
 async function ensureOwnedOrganizerEvent(
   pool: Pool,
   eventId: string,
@@ -475,6 +508,33 @@ function parseRsvpBody(body: unknown): ValidationResult<RsvpStatus> {
   return { value: body.status as RsvpStatus };
 }
 
+function parseCommentBody(body: unknown): ValidationResult<string> {
+  if (!isObject(body)) {
+    return {
+      error: {
+        code: 'invalid_comment',
+        message: 'Comment payload must be an object',
+      },
+    };
+  }
+
+  const parsed = requiredString(body.body, 'body');
+  if (parsed.error || !parsed.value) {
+    return { error: parsed.error ?? { code: 'invalid_comment', message: 'body is required' } };
+  }
+
+  if (parsed.value.length > maxCommentBodyLength) {
+    return {
+      error: {
+        code: 'invalid_comment',
+        message: `body must be ${maxCommentBodyLength} characters or fewer`,
+      },
+    };
+  }
+
+  return { value: parsed.value };
+}
+
 async function ensureInvitedMember(
   pool: Pool,
   eventId: string,
@@ -482,6 +542,18 @@ async function ensureInvitedMember(
 ): Promise<boolean> {
   const invitation = await findActiveInvitationForUser(pool, eventId, memberSub);
   return Boolean(invitation);
+}
+
+async function canCommentOnEvent(
+  pool: Pool,
+  event: EventRecord,
+  user: UserRecord,
+): Promise<boolean> {
+  if (user.role === 'Organizer') {
+    return event.organizerSub === user.sub;
+  }
+
+  return ensureInvitedMember(pool, event.id, user.sub);
 }
 
 function eventUrl(selfUrl: string, eventId: string): string {
@@ -626,6 +698,76 @@ export function createEventsRouter(options: CreateEventsRouterOptions): Router {
       const event = await createEvent(options.databasePool, parsed.value);
       const body: EventResponse = {
         event: await toSignedEvent(objectStorage, event),
+      };
+
+      res.status(201).json(body);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.get('/:eventId/comments', async (req, res, next) => {
+    try {
+      const event = await findEventById(options.databasePool, requireEventId(req));
+      if (!event) {
+        res.status(404).json({ error: { code: 'event_not_found', message: 'Event not found' } });
+        return;
+      }
+
+      const comments = await listCommentsByEvent(options.databasePool, event.id);
+      const body: CommentListResponse = {
+        comments: await Promise.all(
+          comments.map((comment) => toSignedComment(objectStorage, comment)),
+        ),
+      };
+
+      res.json(body);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.post('/:eventId/comments', requireAuth, async (req, res, next) => {
+    try {
+      const user = requireAuthenticatedUser(req);
+      if (user.error || !user.value) {
+        sendValidationError(
+          res,
+          user.error ?? { code: 'not_authenticated', message: 'Not authenticated' },
+        );
+        return;
+      }
+
+      const event = await findEventById(options.databasePool, requireEventId(req));
+      if (!event) {
+        res.status(404).json({ error: { code: 'event_not_found', message: 'Event not found' } });
+        return;
+      }
+
+      const permitted = await canCommentOnEvent(options.databasePool, event, user.value);
+      if (!permitted) {
+        res.status(403).json({
+          error: { code: 'comment_forbidden', message: 'You cannot comment on this event' },
+        });
+        return;
+      }
+
+      const parsed = parseCommentBody(req.body as CreateCommentRequest);
+      if (parsed.error || !parsed.value) {
+        sendValidationError(
+          res,
+          parsed.error ?? { code: 'invalid_comment', message: 'Invalid comment' },
+        );
+        return;
+      }
+
+      const comment = await createComment(options.databasePool, {
+        eventId: event.id,
+        authorSub: user.value.sub,
+        body: parsed.value,
+      });
+      const body: CommentResponse = {
+        comment: await toSignedComment(objectStorage, comment),
       };
 
       res.status(201).json(body);

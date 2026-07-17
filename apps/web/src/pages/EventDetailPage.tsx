@@ -1,4 +1,7 @@
 import type {
+  CommentListResponse,
+  CommentProfile,
+  CommentResponse,
   EventProfile,
   EventResponse,
   InvitationResponse,
@@ -32,6 +35,33 @@ function hostName(event: EventProfile) {
   return event.organizerName ?? event.organizerEmail ?? 'Organizer';
 }
 
+function authorName(comment: CommentProfile) {
+  return comment.authorName ?? comment.authorEmail ?? 'Guest';
+}
+
+function authorInitials(comment: CommentProfile) {
+  const name = authorName(comment);
+  const parts = name
+    .split(/[\s@.]+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const initials = parts
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join('');
+
+  return initials || 'G';
+}
+
+function formatCommentTime(value: string) {
+  return new Date(value).toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
 function EventHeroImage({ event }: { event: EventProfile }) {
   const date = formatEventDate(event.startsAt);
 
@@ -61,6 +91,11 @@ export function EventDetailPage() {
   const [rsvpStatus, setRsvpStatus] = useState<RsvpStatus | null>(null);
   const [rsvpMessage, setRsvpMessage] = useState<string | null>(null);
   const [isSavingRsvp, setIsSavingRsvp] = useState(false);
+  const [comments, setComments] = useState<CommentProfile[]>([]);
+  const [commentBody, setCommentBody] = useState('');
+  const [commentsStatus, setCommentsStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [commentMessage, setCommentMessage] = useState<string | null>(null);
+  const [isPostingComment, setIsPostingComment] = useState(false);
 
   useEffect(() => {
     if (!eventId) {
@@ -131,6 +166,40 @@ export function EventDetailPage() {
     };
   }, [authStatus, eventId, user?.role]);
 
+  useEffect(() => {
+    if (!eventId) {
+      setCommentsStatus('error');
+      setCommentMessage('Event id is missing.');
+      return;
+    }
+
+    let isCurrent = true;
+    setCommentsStatus('loading');
+    setCommentMessage(null);
+
+    apiRequest<CommentListResponse>(`/api/events/${eventId}/comments`)
+      .then((response) => {
+        if (!isCurrent) {
+          return;
+        }
+
+        setComments(response.comments);
+        setCommentsStatus('ready');
+      })
+      .catch((err: unknown) => {
+        if (!isCurrent) {
+          return;
+        }
+
+        setCommentsStatus('error');
+        setCommentMessage(err instanceof Error ? err.message : 'Unable to load comments.');
+      });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [eventId]);
+
   const formattedDate = useMemo(() => (event ? formatEventDate(event.startsAt) : null), [event]);
   const canInvite =
     authStatus === 'authenticated' &&
@@ -194,6 +263,30 @@ export function EventDetailPage() {
       setInviteMessage(err instanceof Error ? err.message : 'Unable to invite that member.');
     } finally {
       setInviteStatus('idle');
+    }
+  }
+
+  async function handleCommentSubmit(submitEvent: FormEvent<HTMLFormElement>) {
+    submitEvent.preventDefault();
+    if (!event || !commentBody.trim()) {
+      return;
+    }
+
+    setIsPostingComment(true);
+    setCommentMessage(null);
+
+    try {
+      const response = await apiRequest<CommentResponse>(`/api/events/${event.id}/comments`, {
+        method: 'POST',
+        body: JSON.stringify({ body: commentBody }),
+      });
+      setComments((current) => [...current, response.comment]);
+      setCommentBody('');
+      setCommentsStatus('ready');
+    } catch (err) {
+      setCommentMessage(err instanceof Error ? err.message : 'Unable to post comment.');
+    } finally {
+      setIsPostingComment(false);
     }
   }
 
@@ -314,6 +407,79 @@ export function EventDetailPage() {
             ) : null}
           </form>
         ) : null}
+
+        <section className="comment-thread" aria-label="Comments">
+          <div className="comment-thread__header">
+            <p className="photo-card__eyebrow">Comments</p>
+            <span>{comments.length}</span>
+          </div>
+
+          {authStatus === 'authenticated' ? (
+            <form
+              className="comment-form"
+              onSubmit={(formEvent) => void handleCommentSubmit(formEvent)}
+            >
+              <label>
+                <span>Join the thread</span>
+                <textarea
+                  value={commentBody}
+                  onChange={(changeEvent) => setCommentBody(changeEvent.target.value)}
+                  maxLength={2000}
+                  placeholder="Add a comment"
+                  required
+                />
+              </label>
+              <button
+                className="button button--primary"
+                type="submit"
+                disabled={isPostingComment || !commentBody.trim()}
+              >
+                {isPostingComment ? 'Posting' : 'Post comment'}
+              </button>
+            </form>
+          ) : (
+            <Link className="button button--secondary" to="/signin">
+              Sign in to comment
+            </Link>
+          )}
+
+          {commentMessage ? (
+            <div className="inline-alert" role="status">
+              {commentMessage}
+            </div>
+          ) : null}
+
+          {commentsStatus === 'loading' ? (
+            <div className="loading-band" role="status">
+              Loading comments
+            </div>
+          ) : null}
+
+          {commentsStatus === 'ready' && comments.length === 0 ? (
+            <p className="comment-thread__empty">No comments yet.</p>
+          ) : null}
+
+          <div className="comment-list">
+            {comments.map((comment) => (
+              <article className="comment-item" key={comment.id}>
+                <div className="comment-avatar" aria-hidden="true">
+                  {comment.authorProfilePhotoUrl ? (
+                    <img src={comment.authorProfilePhotoUrl} alt="" />
+                  ) : (
+                    <span>{authorInitials(comment)}</span>
+                  )}
+                </div>
+                <div className="comment-item__body">
+                  <div className="comment-item__meta">
+                    <strong>{authorName(comment)}</strong>
+                    <span>{formatCommentTime(comment.createdAt)}</span>
+                  </div>
+                  <p>{comment.body}</p>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
       </aside>
     </main>
   );
