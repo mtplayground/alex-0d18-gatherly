@@ -1,61 +1,62 @@
-import { useEffect, useState } from 'react';
-import type { HealthResponse } from '@app/shared';
-import { apiRequest } from './lib/api';
+import { AppShell } from './components/ui/AppShell';
+import { PhotoCard } from './components/ui/PhotoCard';
 
-type ApiState =
-  | { status: 'loading' }
-  | { status: 'ready'; health: HealthResponse }
-  | { status: 'error'; message: string };
+const highlightedPlans = [
+  {
+    title: 'Rooftop supper',
+    eyebrow: 'Fri 7:30 PM',
+    detail: '12 guests',
+    imageUrl:
+      'https://images.unsplash.com/photo-1519671482749-fd09be7ccebf?auto=format&fit=crop&w=1200&q=82',
+    imageAlt: 'Long dinner table set outdoors with warm string lights',
+    tone: 'coral',
+  },
+  {
+    title: 'Lake morning',
+    eyebrow: 'Sat 9:00 AM',
+    detail: '6 guests',
+    imageUrl:
+      'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1200&q=82',
+    imageAlt: 'People sitting near a lake at sunrise',
+    tone: 'amber',
+  },
+  {
+    title: 'Studio night',
+    eyebrow: 'Sun 6:00 PM',
+    detail: '18 guests',
+    imageUrl:
+      'https://images.unsplash.com/photo-1527529482837-4698179dc6ce?auto=format&fit=crop&w=1200&q=82',
+    imageAlt: 'Friends gathered around a decorated party table',
+    tone: 'teal',
+  },
+] as const;
 
 export function App() {
-  const [apiState, setApiState] = useState<ApiState>({ status: 'loading' });
-
-  useEffect(() => {
-    let active = true;
-
-    apiRequest<HealthResponse>('/api/health')
-      .then((health) => {
-        if (active) {
-          setApiState({ status: 'ready', health });
-        }
-      })
-      .catch((err: unknown) => {
-        if (active) {
-          const message = err instanceof Error ? err.message : 'API request failed';
-          setApiState({ status: 'error', message });
-        }
-      });
-
-    return () => {
-      active = false;
-    };
-  }, []);
-
   return (
-    <main className="app-shell">
-      <section className="hero">
-        <p className="eyebrow">Project scaffold</p>
-        <h1>Event planning workspace</h1>
-        <p className="summary">
-          The SPA, API, and shared contract package are ready for the feature issues that follow.
-        </p>
-        <div className="status-panel" aria-live="polite">
-          <span className={`status-dot status-dot--${apiState.status}`} />
-          <span>{renderStatus(apiState)}</span>
+    <AppShell
+      eyebrow="Upcoming"
+      title="Make the next plan feel vivid"
+      summary="A quiet workspace for image-led invitations, organized details, and fast decisions."
+      aside={
+        <div className="shell-aside">
+          <span className="aside-value">03</span>
+          <span className="aside-label">drafts ready</span>
         </div>
+      }
+    >
+      <section className="photo-grid" aria-label="Highlighted plans">
+        {highlightedPlans.map((plan) => (
+          <PhotoCard
+            key={plan.title}
+            title={plan.title}
+            eyebrow={plan.eyebrow}
+            detail={plan.detail}
+            imageUrl={plan.imageUrl}
+            imageAlt={plan.imageAlt}
+            tone={plan.tone}
+          />
+        ))}
       </section>
-    </main>
+    </AppShell>
   );
-}
-
-function renderStatus(apiState: ApiState): string {
-  if (apiState.status === 'loading') {
-    return 'Checking API connection...';
-  }
-
-  if (apiState.status === 'error') {
-    return apiState.message;
-  }
-
-  return `API ${apiState.health.status} at ${apiState.health.timestamp}`;
 }
