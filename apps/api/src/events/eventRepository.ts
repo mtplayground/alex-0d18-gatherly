@@ -30,7 +30,7 @@ export async function createEvent(pool: Pool, input: CreateEventInput): Promise<
         cover_photo_key
       )
       VALUES ($1, $2, $3, $4, $5, $6)
-      RETURNING *, NULL::text AS organizer_name, NULL::text AS organizer_email, 0 AS rsvp_count
+      RETURNING *, NULL::text AS organizer_name, NULL::text AS organizer_email, 0::int AS rsvp_count
     `,
     [
       input.organizerSub,
@@ -57,10 +57,12 @@ export async function listEvents(pool: Pool): Promise<EventRecord[]> {
         events.*,
         users.name AS organizer_name,
         users.email AS organizer_email,
-        0 AS rsvp_count
+        COUNT(event_rsvps.member_sub) FILTER (WHERE event_rsvps.status = 'yes') AS rsvp_count
       FROM events
       LEFT JOIN users ON users.sub = events.organizer_sub
+      LEFT JOIN event_rsvps ON event_rsvps.event_id = events.id
       WHERE events.canceled_at IS NULL
+      GROUP BY events.id, users.name, users.email
       ORDER BY events.starts_at ASC, events.created_at ASC
     `,
   );
@@ -75,10 +77,12 @@ export async function findEventById(pool: Pool, eventId: string): Promise<EventR
         events.*,
         users.name AS organizer_name,
         users.email AS organizer_email,
-        0 AS rsvp_count
+        COUNT(event_rsvps.member_sub) FILTER (WHERE event_rsvps.status = 'yes') AS rsvp_count
       FROM events
       LEFT JOIN users ON users.sub = events.organizer_sub
+      LEFT JOIN event_rsvps ON event_rsvps.event_id = events.id
       WHERE events.id = $1
+      GROUP BY events.id, users.name, users.email
     `,
     [eventId],
   );
@@ -102,7 +106,7 @@ export async function updateEvent(
         location = CASE WHEN $8::boolean THEN $9::text ELSE location END,
         cover_photo_key = CASE WHEN $10::boolean THEN $11::text ELSE cover_photo_key END
       WHERE id = $1
-      RETURNING *, NULL::text AS organizer_name, NULL::text AS organizer_email, 0 AS rsvp_count
+      RETURNING *, NULL::text AS organizer_name, NULL::text AS organizer_email, 0::int AS rsvp_count
     `,
     [
       eventId,
@@ -145,10 +149,12 @@ export async function listEventsByOrganizer(
         events.*,
         users.name AS organizer_name,
         users.email AS organizer_email,
-        0 AS rsvp_count
+        COUNT(event_rsvps.member_sub) FILTER (WHERE event_rsvps.status = 'yes') AS rsvp_count
       FROM events
       LEFT JOIN users ON users.sub = events.organizer_sub
+      LEFT JOIN event_rsvps ON event_rsvps.event_id = events.id
       WHERE events.organizer_sub = $1
+      GROUP BY events.id, users.name, users.email
       ORDER BY events.starts_at ASC, events.created_at ASC
     `,
     [organizerSub],
