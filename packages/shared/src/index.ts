@@ -20,6 +20,10 @@ export const USER_ROLES = ['Organizer', 'Member'] as const;
 
 export type UserRole = (typeof USER_ROLES)[number];
 
+export const RSVP_STATUSES = ['yes', 'no', 'maybe'] as const;
+
+export type RsvpStatus = (typeof RSVP_STATUSES)[number];
+
 export interface UserProfile {
   sub: string;
   email: string;
@@ -73,6 +77,31 @@ export interface EventResponse {
 
 export interface EventListResponse {
   events: EventProfile[];
+}
+
+export interface InvitationProfile {
+  id: string;
+  eventId: string;
+  invitedUserSub: string;
+  invitedBySub: string;
+  invitedUserName: string | null;
+  invitedUserEmail: string | null;
+  invitedByName: string | null;
+  invitedByEmail: string | null;
+  createdAt: string;
+  updatedAt: string;
+  revokedAt: string | null;
+}
+
+export interface RsvpProfile {
+  eventId: string;
+  memberSub: string;
+  status: RsvpStatus;
+  memberName: string | null;
+  memberEmail: string | null;
+  createdAt: string;
+  updatedAt: string;
+  respondedAt: string;
 }
 
 export interface CreateEventRequest {
