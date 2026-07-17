@@ -19,6 +19,7 @@ import {
   deleteEvent,
   findEventById,
   listEvents,
+  listEventsByOrganizer,
   updateEvent,
   type CreateEventInput,
   type UpdateEventInput,
@@ -399,6 +400,28 @@ export function createEventsRouter(options: CreateEventsRouterOptions): Router {
   router.get('/', async (_req, res, next) => {
     try {
       const events = await listEvents(options.databasePool);
+      const body: EventListResponse = {
+        events: await Promise.all(events.map((event) => toSignedEvent(objectStorage, event))),
+      };
+
+      res.json(body);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.get('/mine', requireAuth, async (req, res, next) => {
+    try {
+      const organizer = requireOrganizer(req);
+      if (organizer.error || !organizer.value) {
+        sendValidationError(
+          res,
+          organizer.error ?? { code: 'not_authenticated', message: 'Not authenticated' },
+        );
+        return;
+      }
+
+      const events = await listEventsByOrganizer(options.databasePool, organizer.value);
       const body: EventListResponse = {
         events: await Promise.all(events.map((event) => toSignedEvent(objectStorage, event))),
       };
