@@ -179,6 +179,9 @@ export function OrganizerDashboardPage() {
                 <Link className="button button--secondary" to={`/events/${event.id}`}>
                   View
                 </Link>
+                <Link className="button button--secondary" to={`/events/${event.id}#invite`}>
+                  Invite
+                </Link>
                 <Link className="button button--secondary" to={`/events/${event.id}/rsvps`}>
                   RSVPs
                 </Link>

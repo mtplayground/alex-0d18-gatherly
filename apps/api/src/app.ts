@@ -51,7 +51,9 @@ export function createApp(options: CreateAppOptions) {
     createEventsRouter({
       databasePool: options.databasePool,
       objectStorage: options.objectStorage,
+      selfUrl: options.selfUrl,
       ...(options.auth ? { auth: options.auth } : {}),
+      ...(options.email ? { email: options.email } : {}),
     }),
   );
   app.use('/api/health', createHealthRouter(options.databasePool));
