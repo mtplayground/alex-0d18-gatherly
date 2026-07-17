@@ -1,6 +1,7 @@
 import { createApp } from './app';
 import { loadConfig } from './config';
 import { createDatabasePool } from './db/pool';
+import { startEventReminderJob } from './events/eventReminderJob';
 
 async function main() {
   const config = loadConfig();
@@ -20,9 +21,15 @@ async function main() {
   const server = app.listen(config.port, config.host, () => {
     console.log(`API listening on http://${config.host}:${config.port}`);
   });
+  const stopEventReminderJob = startEventReminderJob({
+    databasePool,
+    selfUrl: config.selfUrl,
+    ...(config.email ? { email: config.email } : {}),
+  });
 
   const shutdown = (signal: NodeJS.Signals) => {
     console.log(`Received ${signal}; shutting down`);
+    stopEventReminderJob();
     server.close((err: Error | undefined) => {
       if (err) {
         console.error('Error while closing server', err);
