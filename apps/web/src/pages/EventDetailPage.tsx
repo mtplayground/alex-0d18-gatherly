@@ -4,6 +4,9 @@ import type {
   CommentListResponse,
   CommentProfile,
   CommentResponse,
+  EventAttachmentListResponse,
+  EventAttachmentProfile,
+  EventAttachmentResponse,
   EventProfile,
   EventResponse,
   InvitationResponse,
@@ -61,6 +64,22 @@ function formatCommentTime(value: string) {
     day: 'numeric',
     hour: 'numeric',
     minute: '2-digit',
+  });
+}
+
+function formatAttachmentSize(byteSize: number) {
+  if (byteSize >= 1024 * 1024) {
+    return `${(byteSize / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
+  return `${Math.max(1, Math.round(byteSize / 1024))} KB`;
+}
+
+function formatAttachmentTime(value: string) {
+  return new Date(value).toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
   });
 }
 
@@ -153,6 +172,13 @@ export function EventDetailPage() {
   const [activities, setActivities] = useState<ActivityLogProfile[]>([]);
   const [activityStatus, setActivityStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [activityMessage, setActivityMessage] = useState<string | null>(null);
+  const [attachments, setAttachments] = useState<EventAttachmentProfile[]>([]);
+  const [attachmentStatus, setAttachmentStatus] = useState<'loading' | 'ready' | 'error'>(
+    'loading',
+  );
+  const [attachmentMessage, setAttachmentMessage] = useState<string | null>(null);
+  const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
+  const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
 
   useEffect(() => {
     if (!eventId) {
@@ -291,6 +317,40 @@ export function EventDetailPage() {
     };
   }, [eventId]);
 
+  useEffect(() => {
+    if (!eventId) {
+      setAttachmentStatus('error');
+      setAttachmentMessage('Event id is missing.');
+      return;
+    }
+
+    let isCurrent = true;
+    setAttachmentStatus('loading');
+    setAttachmentMessage(null);
+
+    apiRequest<EventAttachmentListResponse>(`/api/events/${eventId}/attachments`)
+      .then((response) => {
+        if (!isCurrent) {
+          return;
+        }
+
+        setAttachments(response.attachments);
+        setAttachmentStatus('ready');
+      })
+      .catch((err: unknown) => {
+        if (!isCurrent) {
+          return;
+        }
+
+        setAttachmentStatus('error');
+        setAttachmentMessage(err instanceof Error ? err.message : 'Unable to load attachments.');
+      });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [eventId]);
+
   const formattedDate = useMemo(() => (event ? formatEventDate(event.startsAt) : null), [event]);
   const canInvite =
     authStatus === 'authenticated' &&
@@ -308,6 +368,36 @@ export function EventDetailPage() {
     } catch (err) {
       setActivityStatus('error');
       setActivityMessage(err instanceof Error ? err.message : 'Unable to refresh activity.');
+    }
+  }
+
+  async function handleAttachmentSubmit(submitEvent: FormEvent<HTMLFormElement>) {
+    submitEvent.preventDefault();
+    if (!event || !attachmentFile) {
+      return;
+    }
+
+    setIsUploadingAttachment(true);
+    setAttachmentMessage(null);
+
+    try {
+      const body = new FormData();
+      body.append('attachment', attachmentFile);
+      const response = await apiRequest<EventAttachmentResponse>(
+        `/api/events/${event.id}/attachments`,
+        {
+          method: 'POST',
+          body,
+        },
+      );
+      setAttachments((current) => [response.attachment, ...current]);
+      setAttachmentFile(null);
+      setAttachmentStatus('ready');
+      submitEvent.currentTarget.reset();
+    } catch (err) {
+      setAttachmentMessage(err instanceof Error ? err.message : 'Unable to upload attachment.');
+    } finally {
+      setIsUploadingAttachment(false);
     }
   }
 
@@ -514,6 +604,78 @@ export function EventDetailPage() {
             ) : null}
           </form>
         ) : null}
+
+        <section className="event-attachments" aria-label="PDF attachments">
+          <div className="comment-thread__header">
+            <p className="photo-card__eyebrow">Attachments</p>
+            <span>{attachments.length}</span>
+          </div>
+
+          {canInvite ? (
+            <form
+              className="event-attachment-form"
+              onSubmit={(formEvent) => void handleAttachmentSubmit(formEvent)}
+            >
+              <label>
+                <span>Add PDF</span>
+                <input
+                  type="file"
+                  accept="application/pdf,.pdf"
+                  onChange={(changeEvent) =>
+                    setAttachmentFile(changeEvent.target.files?.[0] ?? null)
+                  }
+                  required
+                />
+              </label>
+              <button
+                className="button button--primary"
+                type="submit"
+                disabled={isUploadingAttachment || !attachmentFile}
+              >
+                {isUploadingAttachment ? 'Uploading' : 'Upload PDF'}
+              </button>
+            </form>
+          ) : null}
+
+          {attachmentMessage ? (
+            <div className="inline-alert" role="status">
+              {attachmentMessage}
+            </div>
+          ) : null}
+
+          {attachmentStatus === 'loading' ? (
+            <div className="loading-band" role="status">
+              Loading attachments
+            </div>
+          ) : null}
+
+          {attachmentStatus === 'ready' && attachments.length === 0 ? (
+            <p className="comment-thread__empty">No PDF attachments yet.</p>
+          ) : null}
+
+          <div className="attachment-list">
+            {attachments.map((attachment) => (
+              <a
+                className="attachment-item"
+                href={attachment.downloadUrl}
+                key={attachment.id}
+                rel="noreferrer"
+                target="_blank"
+              >
+                <span className="attachment-item__icon" aria-hidden="true">
+                  PDF
+                </span>
+                <span>
+                  <strong>{attachment.fileName}</strong>
+                  <small>
+                    {formatAttachmentSize(attachment.byteSize)} ·{' '}
+                    {formatAttachmentTime(attachment.createdAt)}
+                  </small>
+                </span>
+              </a>
+            ))}
+          </div>
+        </section>
 
         <section className="comment-thread" aria-label="Comments">
           <div className="comment-thread__header">

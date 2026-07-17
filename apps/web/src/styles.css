@@ -1173,6 +1173,84 @@ h1 {
   font-weight: 750;
 }
 
+.event-attachments {
+  display: grid;
+  gap: 14px;
+  border-top: 1px solid var(--color-line);
+  padding-top: 20px;
+}
+
+.event-attachment-form {
+  display: grid;
+  gap: 10px;
+}
+
+.event-attachment-form label {
+  display: grid;
+  gap: 8px;
+  color: var(--color-muted);
+  font-size: 0.82rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.event-attachment-form input {
+  width: 100%;
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+  padding: 12px 14px;
+  background: var(--color-surface);
+  color: var(--color-ink);
+  font: inherit;
+  text-transform: none;
+}
+
+.attachment-list {
+  display: grid;
+  gap: 10px;
+}
+
+.attachment-item {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--color-surface);
+  color: var(--color-ink);
+  text-decoration: none;
+}
+
+.attachment-item__icon {
+  display: grid;
+  width: 48px;
+  height: 48px;
+  place-items: center;
+  border-radius: 8px;
+  background: rgb(233 95 61 / 14%);
+  color: var(--color-coral);
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.attachment-item strong,
+.attachment-item small {
+  display: block;
+}
+
+.attachment-item strong {
+  color: var(--color-ink);
+  overflow-wrap: anywhere;
+}
+
+.attachment-item small {
+  margin-top: 4px;
+  color: var(--color-muted);
+  font-weight: 750;
+}
+
 .verification-panel {
   display: grid;
   width: min(100%, 720px);

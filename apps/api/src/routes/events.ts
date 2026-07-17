@@ -8,6 +8,8 @@ import type {
   CreateEventRequest,
   CommentListResponse,
   CommentResponse,
+  EventAttachmentListResponse,
+  EventAttachmentResponse,
   EventListResponse,
   EventResponse,
   InvitationResponse,
@@ -50,6 +52,11 @@ import { toRsvpProfile, type RsvpRecord } from '../rsvps/rsvpModel';
 import { findActiveUserByEmail } from '../users/userRepository';
 import { listActivityLogsByEvent } from '../activity/activityLogRepository';
 import { toActivityLogProfile } from '../activity/activityLogModel';
+import { createEventAttachment, listEventAttachments } from '../events/eventAttachmentRepository';
+import {
+  toEventAttachmentProfile,
+  type EventAttachmentRecord,
+} from '../events/eventAttachmentModel';
 
 export interface CreateEventsRouterOptions {
   auth?: AuthConfig;
@@ -73,6 +80,7 @@ const allowedCoverPhotoTypes = new Map([
   ['image/webp', 'webp'],
 ]);
 const maxCoverPhotoBytes = 8 * 1024 * 1024;
+const maxAttachmentBytes = 12 * 1024 * 1024;
 const maxCommentBodyLength = 2_000;
 
 const coverPhotoUpload = multer({
@@ -83,6 +91,14 @@ const coverPhotoUpload = multer({
   },
 });
 const coverPhotoUploadSingle = coverPhotoUpload.single('cover');
+const attachmentUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: maxAttachmentBytes,
+    files: 1,
+  },
+});
+const attachmentUploadSingle = attachmentUpload.single('attachment');
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === 'object' && !Array.isArray(value));
@@ -410,6 +426,24 @@ function buildCoverPhotoKey(eventId: string, contentType: string): string {
   return `events/${eventId}/cover/${Date.now()}-${randomUUID()}.${extension}`;
 }
 
+function sanitizeAttachmentFileName(fileName: string): string {
+  const cleaned = fileName.replace(/[/\\]/g, '-').replace(/\s+/g, ' ').trim();
+
+  if (!cleaned) {
+    return 'attachment.pdf';
+  }
+
+  return cleaned.toLowerCase().endsWith('.pdf') ? cleaned : `${cleaned}.pdf`;
+}
+
+function buildAttachmentKey(eventId: string): string {
+  return `events/${eventId}/attachments/${Date.now()}-${randomUUID()}.pdf`;
+}
+
+function isPdfBuffer(buffer: Buffer): boolean {
+  return buffer.length >= 4 && buffer.subarray(0, 4).equals(Buffer.from('%PDF'));
+}
+
 function handleCoverPhotoUpload(req: Request, res: Response, next: NextFunction) {
   coverPhotoUploadSingle(req, res, (err: unknown) => {
     if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
@@ -417,6 +451,27 @@ function handleCoverPhotoUpload(req: Request, res: Response, next: NextFunction)
         error: {
           code: 'cover_photo_too_large',
           message: 'Event cover photo must be 8 MB or smaller',
+        },
+      });
+      return;
+    }
+
+    if (err) {
+      next(err);
+      return;
+    }
+
+    next();
+  });
+}
+
+function handleAttachmentUpload(req: Request, res: Response, next: NextFunction) {
+  attachmentUploadSingle(req, res, (err: unknown) => {
+    if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
+      res.status(400).json({
+        error: {
+          code: 'attachment_too_large',
+          message: 'PDF attachment must be 12 MB or smaller',
         },
       });
       return;
@@ -453,6 +508,10 @@ async function toSignedComment(storage: ObjectStorage, comment: CommentRecord) {
     ...profile,
     authorProfilePhotoUrl: await storage.getSignedReadUrl(comment.authorProfilePhotoKey),
   };
+}
+
+async function toSignedAttachment(storage: ObjectStorage, attachment: EventAttachmentRecord) {
+  return toEventAttachmentProfile(attachment, await storage.getSignedReadUrl(attachment.objectKey));
 }
 
 async function ensureOwnedOrganizerEvent(
@@ -801,6 +860,102 @@ export function createEventsRouter(options: CreateEventsRouterOptions): Router {
       next(err);
     }
   });
+
+  router.get('/:eventId/attachments', async (req, res, next) => {
+    try {
+      const event = await findEventById(options.databasePool, requireEventId(req));
+      if (!event) {
+        res.status(404).json({ error: { code: 'event_not_found', message: 'Event not found' } });
+        return;
+      }
+
+      const attachments = await listEventAttachments(options.databasePool, event.id);
+      const body: EventAttachmentListResponse = {
+        attachments: await Promise.all(
+          attachments.map((attachment) => toSignedAttachment(objectStorage, attachment)),
+        ),
+      };
+
+      res.json(body);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.post(
+    '/:eventId/attachments',
+    requireAuth,
+    handleAttachmentUpload,
+    async (req, res, next) => {
+      try {
+        const organizer = requireOrganizer(req);
+        if (organizer.error || !organizer.value) {
+          sendValidationError(
+            res,
+            organizer.error ?? { code: 'not_authenticated', message: 'Not authenticated' },
+          );
+          return;
+        }
+
+        const existing = await ensureOwnedOrganizerEvent(
+          options.databasePool,
+          requireEventId(req),
+          organizer.value,
+        );
+        if (!existing) {
+          res.status(404).json({ error: { code: 'event_not_found', message: 'Event not found' } });
+          return;
+        }
+        if (existing === 'forbidden') {
+          res.status(403).json({
+            error: { code: 'event_forbidden', message: 'Event is owned by another organizer' },
+          });
+          return;
+        }
+
+        const file = req.file;
+        if (!file) {
+          res.status(400).json({
+            error: { code: 'attachment_required', message: 'PDF attachment is required' },
+          });
+          return;
+        }
+
+        if (file.mimetype !== 'application/pdf' || !isPdfBuffer(file.buffer)) {
+          res.status(400).json({
+            error: {
+              code: 'unsupported_attachment_type',
+              message: 'Attachment must be a PDF file',
+            },
+          });
+          return;
+        }
+
+        const objectKey = buildAttachmentKey(existing.id);
+        await objectStorage.uploadBuffer({
+          relativeKey: objectKey,
+          contentType: 'application/pdf',
+          body: file.buffer,
+        });
+
+        const attachment = await createEventAttachment(options.databasePool, {
+          eventId: existing.id,
+          uploadedBySub: organizer.value,
+          objectKey,
+          fileName: sanitizeAttachmentFileName(file.originalname),
+          contentType: 'application/pdf',
+          byteSize: file.buffer.length,
+        });
+        const body: EventAttachmentResponse = {
+          attachment: await toSignedAttachment(objectStorage, attachment),
+        };
+
+        res.status(201).json(body);
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
 
   router.get('/:eventId/activity', async (req, res, next) => {
     try {

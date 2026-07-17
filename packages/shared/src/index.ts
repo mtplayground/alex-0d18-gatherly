@@ -165,6 +165,16 @@ export interface ActivityLogProfile {
   createdAt: string;
 }
 
+export interface EventAttachmentProfile {
+  id: string;
+  eventId: string;
+  fileName: string;
+  contentType: string;
+  byteSize: number;
+  downloadUrl: string;
+  createdAt: string;
+}
+
 export interface CreateCommentRequest {
   body: string;
 }
@@ -179,6 +189,14 @@ export interface CommentListResponse {
 
 export interface ActivityLogListResponse {
   activities: ActivityLogProfile[];
+}
+
+export interface EventAttachmentResponse {
+  attachment: EventAttachmentProfile;
+}
+
+export interface EventAttachmentListResponse {
+  attachments: EventAttachmentProfile[];
 }
 
 export interface CreateEventRequest {
