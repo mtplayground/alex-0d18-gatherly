@@ -40,3 +40,7 @@ export interface AuthSessionResponse {
   user: UserProfile;
   registration: 'created' | 'returning';
 }
+
+export interface UpdateCurrentUserRequest {
+  role: UserRole;
+}

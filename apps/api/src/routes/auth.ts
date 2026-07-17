@@ -1,10 +1,15 @@
 import { Router } from 'express';
 import type { Response } from 'express';
-import type { AuthLoginUrlResponse, AuthSessionResponse } from '@app/shared';
+import type {
+  AuthLoginUrlResponse,
+  AuthSessionResponse,
+  UpdateCurrentUserRequest,
+} from '@app/shared';
 import type { Pool } from 'pg';
 import type { AuthConfig } from '../config';
 import { createAuthMiddleware } from '../middleware/authMiddleware';
-import { toUserProfile } from '../users/userModel';
+import { isUserRole, toUserProfile } from '../users/userModel';
+import { updateAuthenticatedUserRole } from '../users/userRepository';
 
 export interface CreateAuthRouterOptions {
   auth?: AuthConfig;
@@ -151,6 +156,37 @@ export function createAuthRouter(options: CreateAuthRouterOptions): Router {
       };
 
       res.json(body);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.patch('/me', requireAuth, async (req, res, next) => {
+    try {
+      if (!req.auth) {
+        next(new Error('Authenticated route missing auth context'));
+        return;
+      }
+
+      const body = req.body as Partial<UpdateCurrentUserRequest>;
+      if (typeof body.role !== 'string' || !isUserRole(body.role)) {
+        res
+          .status(400)
+          .json({ error: { code: 'invalid_role', message: 'Role must be Organizer or Member' } });
+        return;
+      }
+
+      const user = await updateAuthenticatedUserRole(
+        options.databasePool,
+        req.auth.claims.sub,
+        body.role,
+      );
+      const responseBody: AuthSessionResponse = {
+        user: toUserProfile(user),
+        registration: req.auth.registration,
+      };
+
+      res.json(responseBody);
     } catch (err) {
       next(err);
     }
