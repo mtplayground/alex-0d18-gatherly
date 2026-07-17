@@ -6,10 +6,14 @@ import type {
   CreateEventRequest,
   EventListResponse,
   EventResponse,
+  InvitationResponse,
+  CreateInvitationRequest,
+  InvitationEmailStatus,
   UpdateEventRequest,
 } from '@app/shared';
 import type { Pool } from 'pg';
-import type { AuthConfig, ObjectStorageConfig } from '../config';
+import type { AuthConfig, EmailConfig, ObjectStorageConfig } from '../config';
+import { EmailSendError, sendEmail } from '../email/emailClient';
 import { createAuthMiddleware } from '../middleware/authMiddleware';
 import type { ObjectStorage } from '../storage/objectStorage';
 import { createObjectStorage } from '../storage/objectStorage';
@@ -24,11 +28,17 @@ import {
   type CreateEventInput,
   type UpdateEventInput,
 } from '../events/eventRepository';
+import { buildInvitationEmail } from '../invitations/invitationEmail';
+import { createInvitation } from '../invitations/invitationRepository';
+import { toInvitationProfile, type InvitationRecord } from '../invitations/invitationModel';
+import { findActiveUserByEmail } from '../users/userRepository';
 
 export interface CreateEventsRouterOptions {
   auth?: AuthConfig;
   databasePool: Pool;
+  email?: EmailConfig;
   objectStorage: ObjectStorageConfig;
+  selfUrl: string;
 }
 
 interface ValidationResult<T> {
@@ -317,7 +327,8 @@ function requireOrganizer(req: Request): ValidationResult<string> {
 }
 
 function sendValidationError(res: Response, error: { code: string; message: string }) {
-  const status = error.code === 'organizer_required' ? 403 : 400;
+  const status =
+    error.code === 'organizer_required' || error.code === 'event_forbidden' ? 403 : 400;
   res.status(status).json({ error });
 }
 
@@ -387,6 +398,63 @@ async function ensureOwnedOrganizerEvent(
   }
 
   return event;
+}
+
+function parseInvitationBody(body: unknown): ValidationResult<string> {
+  if (!isObject(body)) {
+    return {
+      error: {
+        code: 'invalid_invitation',
+        message: 'Invitation payload must be an object',
+      },
+    };
+  }
+
+  const email = requiredString(body.email, 'email');
+  if (email.error || !email.value) {
+    return { error: email.error ?? { code: 'invalid_invitation', message: 'email is required' } };
+  }
+
+  return { value: email.value.toLowerCase() };
+}
+
+function eventUrl(selfUrl: string, eventId: string): string {
+  return new URL(`/events/${eventId}`, selfUrl).toString();
+}
+
+async function sendInvitationEmail(input: {
+  email: EmailConfig | undefined;
+  event: EventRecord;
+  invitation: InvitationRecord;
+  selfUrl: string;
+}): Promise<InvitationEmailStatus> {
+  if (!input.email) {
+    return 'email_not_configured';
+  }
+
+  const email = buildInvitationEmail({
+    event: input.event,
+    invitation: input.invitation,
+    eventUrl: eventUrl(input.selfUrl, input.event.id),
+  });
+
+  try {
+    await sendEmail(input.email, {
+      to: input.invitation.invitedUserEmail ?? input.invitation.invitedUserSub,
+      subject: email.subject,
+      html: email.html,
+      text: email.text,
+      ...(input.event.organizerEmail ? { replyTo: input.event.organizerEmail } : {}),
+    });
+    return 'sent';
+  } catch (err) {
+    if (err instanceof EmailSendError && err.status === 429) {
+      return 'email_rate_limited';
+    }
+
+    console.error('Invitation email failed', err);
+    return 'email_failed';
+  }
 }
 
 export function createEventsRouter(options: CreateEventsRouterOptions): Router {
@@ -606,6 +674,82 @@ export function createEventsRouter(options: CreateEventsRouterOptions): Router {
       }
     },
   );
+
+  router.post('/:eventId/invitations', requireAuth, async (req, res, next) => {
+    try {
+      const organizer = requireOrganizer(req);
+      if (organizer.error || !organizer.value) {
+        sendValidationError(
+          res,
+          organizer.error ?? { code: 'not_authenticated', message: 'Not authenticated' },
+        );
+        return;
+      }
+
+      const eventId = requireEventId(req);
+      const existing = await ensureOwnedOrganizerEvent(
+        options.databasePool,
+        eventId,
+        organizer.value,
+      );
+      if (!existing) {
+        res.status(404).json({ error: { code: 'event_not_found', message: 'Event not found' } });
+        return;
+      }
+      if (existing === 'forbidden') {
+        sendValidationError(res, {
+          code: 'event_forbidden',
+          message: 'Event is owned by another organizer',
+        });
+        return;
+      }
+
+      const parsed = parseInvitationBody(req.body as CreateInvitationRequest);
+      if (parsed.error || !parsed.value) {
+        sendValidationError(
+          res,
+          parsed.error ?? { code: 'invalid_invitation', message: 'Invalid invitation' },
+        );
+        return;
+      }
+
+      const invitee = await findActiveUserByEmail(options.databasePool, parsed.value);
+      if (!invitee) {
+        res.status(404).json({
+          error: { code: 'invitee_not_found', message: 'No active user exists for that email' },
+        });
+        return;
+      }
+
+      if (invitee.role !== 'Member') {
+        sendValidationError(res, {
+          code: 'invitee_not_member',
+          message: 'Only Member accounts can be invited to events',
+        });
+        return;
+      }
+
+      const invitation = await createInvitation(options.databasePool, {
+        eventId: existing.id,
+        invitedUserSub: invitee.sub,
+        invitedBySub: organizer.value,
+      });
+      const emailStatus = await sendInvitationEmail({
+        email: options.email,
+        event: existing,
+        invitation,
+        selfUrl: options.selfUrl,
+      });
+      const body: InvitationResponse = {
+        invitation: toInvitationProfile(invitation),
+        emailStatus,
+      };
+
+      res.status(201).json(body);
+    } catch (err) {
+      next(err);
+    }
+  });
 
   router.delete('/:eventId', requireAuth, async (req, res, next) => {
     try {

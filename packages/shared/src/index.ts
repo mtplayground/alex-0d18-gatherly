@@ -93,6 +93,18 @@ export interface InvitationProfile {
   revokedAt: string | null;
 }
 
+export type InvitationEmailStatus =
+  'sent' | 'email_not_configured' | 'email_rate_limited' | 'email_failed';
+
+export interface CreateInvitationRequest {
+  email: string;
+}
+
+export interface InvitationResponse {
+  invitation: InvitationProfile;
+  emailStatus: InvitationEmailStatus;
+}
+
 export interface RsvpProfile {
   eventId: string;
   memberSub: string;

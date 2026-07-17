@@ -1,6 +1,8 @@
-import type { EventProfile, EventResponse } from '@app/shared';
+import type { EventProfile, EventResponse, InvitationResponse } from '@app/shared';
+import type { FormEvent } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { useAuth } from '../auth/AuthContext';
 import { apiRequest } from '../lib/api';
 
 function formatEventDate(value: string) {
@@ -40,9 +42,13 @@ function EventHeroImage({ event }: { event: EventProfile }) {
 
 export function EventDetailPage() {
   const { eventId } = useParams();
+  const { status: authStatus, user } = useAuth();
   const [event, setEvent] = useState<EventProfile | null>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [message, setMessage] = useState<string | null>(null);
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteStatus, setInviteStatus] = useState<'idle' | 'sending'>('idle');
+  const [inviteMessage, setInviteMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (!eventId) {
@@ -79,6 +85,41 @@ export function EventDetailPage() {
   }, [eventId]);
 
   const formattedDate = useMemo(() => (event ? formatEventDate(event.startsAt) : null), [event]);
+  const canInvite =
+    authStatus === 'authenticated' &&
+    Boolean(user && event && user.role === 'Organizer' && user.sub === event.organizerSub);
+
+  async function handleInviteSubmit(submitEvent: FormEvent<HTMLFormElement>) {
+    submitEvent.preventDefault();
+    if (!event) {
+      return;
+    }
+
+    setInviteStatus('sending');
+    setInviteMessage(null);
+
+    try {
+      const response = await apiRequest<InvitationResponse>(`/api/events/${event.id}/invitations`, {
+        method: 'POST',
+        body: JSON.stringify({ email: inviteEmail }),
+      });
+      setInviteEmail('');
+
+      if (response.emailStatus === 'sent') {
+        setInviteMessage('Invitation sent.');
+      } else if (response.emailStatus === 'email_not_configured') {
+        setInviteMessage('Invitation saved. Email delivery is not configured yet.');
+      } else if (response.emailStatus === 'email_rate_limited') {
+        setInviteMessage('Invitation saved. Email is rate limited; try sending again shortly.');
+      } else {
+        setInviteMessage('Invitation saved, but email delivery failed.');
+      }
+    } catch (err) {
+      setInviteMessage(err instanceof Error ? err.message : 'Unable to invite that member.');
+    } finally {
+      setInviteStatus('idle');
+    }
+  }
 
   if (status === 'loading') {
     return (
@@ -149,6 +190,38 @@ export function EventDetailPage() {
             Workspace
           </Link>
         </div>
+
+        {canInvite ? (
+          <form
+            className="event-invite-form"
+            id="invite"
+            onSubmit={(formEvent) => void handleInviteSubmit(formEvent)}
+          >
+            <label>
+              <span>Invite member</span>
+              <input
+                type="email"
+                autoComplete="email"
+                value={inviteEmail}
+                onChange={(changeEvent) => setInviteEmail(changeEvent.target.value)}
+                placeholder="member@example.com"
+                required
+              />
+            </label>
+            <button
+              className="button button--primary"
+              type="submit"
+              disabled={inviteStatus === 'sending'}
+            >
+              {inviteStatus === 'sending' ? 'Inviting' : 'Send invite'}
+            </button>
+            {inviteMessage ? (
+              <div className="inline-alert" role="status">
+                {inviteMessage}
+              </div>
+            ) : null}
+          </form>
+        ) : null}
       </aside>
     </main>
   );

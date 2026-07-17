@@ -111,3 +111,18 @@ export async function updateAuthenticatedUserProfilePhoto(
 
   return mapUserRow(row);
 }
+
+export async function findActiveUserByEmail(pool: Pool, email: string): Promise<UserRecord | null> {
+  const result = await pool.query<UserRow>(
+    `
+      SELECT *
+      FROM users
+      WHERE email = $1
+        AND disabled_at IS NULL
+    `,
+    [email],
+  );
+
+  const row = result.rows[0];
+  return row ? mapUserRow(row) : null;
+}
